@@ -84,10 +84,22 @@ class WifiP2pController(
     }
 
     @SuppressLint("MissingPermission")
-    fun connectToPeer(device: WifiP2pDevice) {
-        val config = WifiP2pConfig().apply { deviceAddress = device.deviceAddress }
+    fun connectToPeer(device: WifiP2pDevice, band: Int = WifiP2pConfig.GROUP_OWNER_BAND_AUTO) {
+        val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            WifiP2pConfig.Builder()
+                .setDeviceAddress(android.net.MacAddress.fromString(device.deviceAddress))
+                .setGroupOperatingBand(band)
+                .build()
+        } else {
+            WifiP2pConfig().apply { deviceAddress = device.deviceAddress }
+        }
+        val bandLabel = when (band) {
+            WifiP2pConfig.GROUP_OWNER_BAND_2GHZ -> "2.4 GHz"
+            WifiP2pConfig.GROUP_OWNER_BAND_5GHZ -> "5 GHz"
+            else -> "Auto"
+        }
         manager.connect(channel, config, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() = onStatus("Negotiating group with ${device.deviceName}...")
+            override fun onSuccess() = onStatus("Negotiating $bandLabel group with ${device.deviceName}...")
             override fun onFailure(reason: Int) = onStatus("Connect failed (code $reason)")
         })
     }

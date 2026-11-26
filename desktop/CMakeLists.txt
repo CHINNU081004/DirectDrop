@@ -20,6 +20,9 @@ add_executable(directdrop_desktop
     main.cpp
     MainWindow.hpp
     MainWindow.cpp
+    LiquidDropProgressBar.hpp
+    RadarScanWidget.hpp
+    TlsClient.hpp
     WifiP2pBackend.hpp
     WifiP2pBackend.cpp
     TlsServer.hpp

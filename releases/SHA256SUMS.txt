@@ -1,2 +1,2 @@
-a58eb1005e317cf4c9b2eb4f650d18b24e7ff2ffac0ad2d41c0bfcee50797089  directdrop_1.0.1_amd64.deb
+d64dc89be5a1c39ba8c8690b39f33f8583bd231b44234e660f275db70d2ecf32  directdrop_1.0.14_amd64.deb
 a90e62458a70f969b047f3fa9da2ef1b78ad398ac8d92ae7913e542d113c2a14  directdrop-1.0.1-debug.apk

@@ -45,6 +45,8 @@ signals:
     void logMessage(const QString& msg);
     void pairingRequested(const QString& deviceName, const QString& deviceId, const QString& sasCode);
     void clientAuthenticated(const QString& deviceName, const QString& deviceId);
+    void transferStarted(int totalFiles, uint64_t totalBytes);
+    void fileProgress(const QString& relPath, uint64_t receivedBytes, uint64_t totalBytes, bool verified);
     void transferProgress(const TransferStats& stats);
     void jobCompleted(const TransferStats& stats);
     void clientDisconnected();
@@ -69,6 +71,7 @@ private:
         QString jobId;
         std::unique_ptr<SafeFileWriter> writer;
         QString activeRelPath;
+        uint64_t activeFileSize = 0;
         TransferStats stats;
         QElapsedTimer jobTimer;
     };

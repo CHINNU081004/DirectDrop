@@ -24,7 +24,7 @@ object Protocol {
     const val MAGIC = 0x44445031 // "DDP1"
     const val VERSION_MAJOR: Short = 1
     const val VERSION_MINOR: Short = 0
-    const val CHUNK_SIZE = 256 * 1024
+    const val CHUNK_SIZE = 1024 * 1024 // 1 MiB pipelined chunks
 
     const val MSG_HELLO: Short = 0x0001
     const val MSG_HELLO_ACK: Short = 0x0002
@@ -88,11 +88,13 @@ class ProtocolClient(private val context: Context) {
 
         val socket = sslCtx.socketFactory.createSocket() as SSLSocket
         socket.enabledProtocols = arrayOf("TLSv1.3")
+        socket.tcpNoDelay = true
+        socket.sendBufferSize = 2 * 1024 * 1024
         socket.connect(InetSocketAddress(host, port), 10000)
         socket.startHandshake()
 
-        val out = DataOutputStream(socket.outputStream)
-        val inp = DataInputStream(socket.inputStream)
+        val out = DataOutputStream(java.io.BufferedOutputStream(socket.outputStream, 1024 * 1024))
+        val inp = DataInputStream(java.io.BufferedInputStream(socket.inputStream, 256 * 1024))
 
         sendJson(out, Protocol.MSG_HELLO, JSONObject().apply {
             put("deviceId", deviceId)
@@ -158,10 +160,12 @@ class ProtocolClient(private val context: Context) {
                     val payload = ByteBuffer.allocate(8 + n).order(ByteOrder.BIG_ENDIAN)
                     payload.putLong(offset)
                     payload.put(buf, 0, n)
-                    sendFrame(out, Protocol.MSG_FILE_CHUNK, payload.array())
+                    sendFrame(out, Protocol.MSG_FILE_CHUNK, payload.array(), flush = false)
                     offset += n
+                    onProgress(verified, files.size, "${f.relativePath} (${offset * 100 / maxOf(1L, f.size)}%)")
                 }
             }
+            out.flush()
             sendJson(out, Protocol.MSG_FILE_END, JSONObject())
             val endAck = readFrame(inp)
             val endJson = JSONObject(String(endAck.second))
@@ -193,7 +197,7 @@ class ProtocolClient(private val context: Context) {
         sendFrame(out, type, obj.toString().toByteArray(Charsets.UTF_8))
     }
 
-    private fun sendFrame(out: DataOutputStream, type: Short, payload: ByteArray) {
+    private fun sendFrame(out: DataOutputStream, type: Short, payload: ByteArray, flush: Boolean = true) {
         val hdr = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN)
         hdr.putInt(Protocol.MAGIC)
         hdr.putShort(Protocol.VERSION_MAJOR)
@@ -203,7 +207,7 @@ class ProtocolClient(private val context: Context) {
         hdr.putInt(payload.size)
         out.write(hdr.array())
         if (payload.isNotEmpty()) out.write(payload)
-        out.flush()
+        if (flush) out.flush()
     }
 
     private fun readFrame(inp: DataInputStream): Pair<Short, ByteArray> {

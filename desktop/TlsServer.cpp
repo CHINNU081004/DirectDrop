@@ -228,6 +228,7 @@ void TlsReceiverServer::handleFrame(ClientSession& sess, const FrameHeader& hdr,
         }
         sess.jobTimer.start();
         sendJson(sess.socket, MessageType::ManifestAck, {{QStringLiteral("jobId"), sess.jobId}, {QStringLiteral("accepted"), true}});
+        emit transferStarted(sess.stats.totalFiles, sess.stats.totalBytes);
         emit transferProgress(sess.stats);
         return;
     }
@@ -264,8 +265,10 @@ void TlsReceiverServer::handleFrame(ClientSession& sess, const FrameHeader& hdr,
             return;
         }
         sess.activeRelPath = relPath;
+        sess.activeFileSize = size;
         sess.stats.currentFile = relPath;
         sendJson(sess.socket, MessageType::ResumeAck, {{QStringLiteral("relativePath"), relPath}, {QStringLiteral("offset"), static_cast<qint64>(sess.writer->bytesWritten())}});
+        emit fileProgress(relPath, sess.writer->bytesWritten(), size, false);
         emit transferProgress(sess.stats);
         return;
     }
@@ -288,6 +291,7 @@ void TlsReceiverServer::handleFrame(ClientSession& sess, const FrameHeader& hdr,
         double secs = std::max(0.001, sess.jobTimer.elapsed() / 1000.0);
         sess.stats.averageMbps = (sess.stats.receivedBytes / (1024.0 * 1024.0)) / secs;
         sess.stats.currentMbps = sess.stats.averageMbps;
+        emit fileProgress(sess.activeRelPath, sess.writer->bytesWritten(), sess.activeFileSize, false);
         emit transferProgress(sess.stats);
         return;
     }
@@ -309,6 +313,7 @@ void TlsReceiverServer::handleFrame(ClientSession& sess, const FrameHeader& hdr,
             {QStringLiteral("zeroByteClass"), zeroByteClassToString(zc)},
             {QStringLiteral("error"), err}
         });
+        emit fileProgress(sess.activeRelPath, sess.activeFileSize, sess.activeFileSize, ok);
         emit transferProgress(sess.stats);
         return;
     }
