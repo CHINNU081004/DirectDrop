@@ -1,6 +1,14 @@
-# DirectDrop v1.3.0
+# DirectDrop v1.3.1
 
 High-performance, verified, native **Wi-Fi Direct** file-transfer system between Android (API 29–36) and Linux Desktop (Ubuntu/Debian/Fedora/Arch, C++20 + Qt 6).
+
+## What's New in v1.3.1
+- **Desktop Button Sizing & Responsive Wrapping** (`desktop/FlowLayout.hpp`, `desktop/FileManagerWidget.cpp`, `desktop/MainWindow.cpp`):
+  - Replaced rigid single-row toolbars with `FlowLayout` and `QSizePolicy::Minimum` so every button label (`Select All`, `Clear`, `Preview`, `New Folder`, `Rename`, `Delete`, `Add to Queue`, `Send Queued →`, `Connect Device →`, `Connect Selected`) fits cleanly at `1366×768` and narrower (`780×560`) widths without clipping.
+- **Movable Liquid-Glass Category Selector on Android** (`android/.../LiquidSegmentedSelectorView.kt`, `MainActivity.kt`, `activity_main.xml`):
+  - Replaced emoji-only category tabs with a spring-animated translucent liquid-glass segmented selector (`Files`, `Images`, `Videos`, `Audio`, `Apps`) featuring horizontal scroll support, velocity stretch, reduced-motion support, per-category scroll preservation, and empty-state feedback.
+- **Universal Liquid Glass Design Tokens**:
+  - Unified `LiquidSegmentedSelector` (`desktop/LiquidSegmentedSelector.hpp`) across File Manager tabs and Adaptive Wi-Fi band selection on desktop, and `LiquidSegmentedSelectorView` + `LiquidGlassTokens` across Home tabs, File Selection categories, and neutral glass buttons on Android.
 
 ## What's New in v1.3.0
 - **Native Desktop File Manager** (`desktop/FileManagerWidget.hpp`, `desktop/FileManagerWidget.cpp`):
@@ -19,7 +27,7 @@ High-performance, verified, native **Wi-Fi Direct** file-transfer system between
 cmake -S desktop -B desktop/build -G Ninja
 cmake --build desktop/build --parallel
 ctest --test-dir desktop/build --output-on-failure
-sudo apt install "./releases/directdrop_1.3.0_amd64.deb"
+sudo apt install "./releases/directdrop_1.3.1_amd64.deb"
 ```
 
 ### Android
@@ -30,8 +38,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Release Artifacts (`releases/`)
-- `directdrop_1.3.0_amd64.deb` (earlier versions preserved)
-- `directdrop-1.3.0-debug.apk` (earlier versions preserved)
+- `directdrop_1.3.1_amd64.deb` (earlier versions preserved)
+- `directdrop-1.3.1-debug.apk` (earlier versions preserved)
 - `SHA256SUMS.txt`
 
 ## Known Limitations

@@ -1,4 +1,5 @@
 #include "FileManagerWidget.hpp"
+#include "FlowLayout.hpp"
 
 #include <QApplication>
 #include <QDateTime>
@@ -35,18 +36,18 @@ FileManagerWidget::FileManagerWidget(QWidget* parent) : QWidget(parent) {
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(10);
 
-    // 1. Top Segmented Tab Bar (Images | Files | Folders) + Volumes
+    // 1. Top Liquid-Glass Segmented Tab Bar (Images | Files | Folders) + Volumes
     auto* tabRow = new QHBoxLayout();
-    m_tabImages = new QPushButton(QStringLiteral("Images"), this);
-    m_tabFiles = new QPushButton(QStringLiteral("Files"), this);
-    m_tabFolders = new QPushButton(QStringLiteral("Folders"), this);
-    for (auto* b : {m_tabImages, m_tabFiles, m_tabFolders}) {
-        b->setCheckable(true);
-        b->setMinimumHeight(34);
-    }
-    m_tabFiles->setChecked(true);
+    tabRow->setSpacing(10);
+    m_tabSelector = new LiquidSegmentedSelector(
+        {QStringLiteral("Images"), QStringLiteral("Files"), QStringLiteral("Folders")}, this);
+    m_tabSelector->setCurrentIndex(1, false);
+    m_tabSelector->setToolTip(QStringLiteral("Switch between Images, Files, and Folders views"));
 
     m_volumesCombo = new QComboBox(this);
+    m_volumesCombo->setMinimumWidth(140);
+    m_volumesCombo->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    m_volumesCombo->setToolTip(QStringLiteral("Jump to Home, Downloads, Pictures, or mounted drives"));
     m_volumesCombo->addItem(QStringLiteral("Home"), QDir::homePath());
     QString dl = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (!dl.isEmpty()) m_volumesCombo->addItem(QStringLiteral("Downloads"), dl);
@@ -61,22 +62,29 @@ FileManagerWidget::FileManagerWidget(QWidget* parent) : QWidget(parent) {
         }
     }
 
-    tabRow->addWidget(m_tabImages);
-    tabRow->addWidget(m_tabFiles);
-    tabRow->addWidget(m_tabFolders);
+    tabRow->addWidget(m_tabSelector);
     tabRow->addStretch();
     tabRow->addWidget(m_volumesCombo);
     root->addLayout(tabRow);
 
-    // 2. Location + Search + View Controls (2 clean rows so nothing clips at 1040x680 or 1366x768)
+    // 2. Location + Search + View Controls (wrapping-safe rows so nothing clips at any width)
     auto* navRow = new QHBoxLayout();
+    navRow->setSpacing(8);
     m_btnUp = new QPushButton(QStringLiteral("↑ Up"), this);
+    m_btnUp->setToolTip(QStringLiteral("Go to parent folder"));
     m_lblPath = new QLabel(m_currentDir.absolutePath(), this);
     m_lblPath->setWordWrap(false);
+    m_lblPath->setMinimumWidth(120);
     m_btnGrid = new QPushButton(QStringLiteral("Grid"), this);
+    m_btnGrid->setToolTip(QStringLiteral("Toggle between List and Grid view"));
     m_btnHidden = new QPushButton(QStringLiteral("Hidden"), this);
     m_btnHidden->setCheckable(true);
+    m_btnHidden->setToolTip(QStringLiteral("Show or hide dotfiles"));
     m_btnRefresh = new QPushButton(QStringLiteral("Refresh"), this);
+    m_btnRefresh->setToolTip(QStringLiteral("Reload current directory"));
+    for (auto* b : {m_btnUp, m_btnGrid, m_btnHidden, m_btnRefresh}) {
+        b->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    }
     navRow->addWidget(m_btnUp);
     navRow->addWidget(m_lblPath, 1);
     navRow->addWidget(m_btnGrid);
@@ -85,11 +93,14 @@ FileManagerWidget::FileManagerWidget(QWidget* parent) : QWidget(parent) {
     root->addLayout(navRow);
 
     auto* filterRow = new QHBoxLayout();
+    filterRow->setSpacing(8);
     m_searchEdit = new QLineEdit(this);
     m_searchEdit->setPlaceholderText(QStringLiteral("Search in current view..."));
     m_sortCombo = new QComboBox(this);
+    m_sortCombo->setMinimumWidth(120);
     m_sortCombo->addItems({QStringLiteral("Sort: Name"), QStringLiteral("Sort: Size"), QStringLiteral("Sort: Type"), QStringLiteral("Sort: Date")});
     m_filterCombo = new QComboBox(this);
+    m_filterCombo->setMinimumWidth(120);
     m_filterCombo->addItems({QStringLiteral("All"), QStringLiteral("Images"), QStringLiteral("Videos"), QStringLiteral("Documents"), QStringLiteral("Archives")});
     filterRow->addWidget(m_searchEdit, 1);
     filterRow->addWidget(m_sortCombo);
@@ -106,35 +117,50 @@ FileManagerWidget::FileManagerWidget(QWidget* parent) : QWidget(parent) {
     m_lblState->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.68); font-size: 12px;"));
     root->addWidget(m_lblState);
 
-    // 4. Local Ops + Transfer Queue Strip (2 clean rows so no button text clips)
-    auto* localOpsRow = new QHBoxLayout();
-    m_btnSelectAll = new QPushButton(QStringLiteral("Select All"), this);
-    m_btnClearSel = new QPushButton(QStringLiteral("Clear"), this);
-    m_btnPreview = new QPushButton(QStringLiteral("Preview"), this);
-    m_btnNewFolder = new QPushButton(QStringLiteral("New Folder"), this);
-    m_btnRename = new QPushButton(QStringLiteral("Rename"), this);
-    m_btnDelete = new QPushButton(QStringLiteral("Delete"), this);
-    localOpsRow->addWidget(m_btnSelectAll);
-    localOpsRow->addWidget(m_btnClearSel);
-    localOpsRow->addWidget(m_btnPreview);
-    localOpsRow->addWidget(m_btnNewFolder);
-    localOpsRow->addWidget(m_btnRename);
-    localOpsRow->addWidget(m_btnDelete);
-    localOpsRow->addStretch();
-    root->addLayout(localOpsRow);
+    // 4. Local Ops (FlowLayout wraps cleanly on narrow widths) + Transfer Queue Strip
+    auto* localOpsHost = new QWidget(this);
+    auto* localOpsFlow = new FlowLayout(localOpsHost, 0, 8, 8);
+    m_btnSelectAll = new QPushButton(QStringLiteral("Select All"), localOpsHost);
+    m_btnSelectAll->setToolTip(QStringLiteral("Select all visible items"));
+    m_btnClearSel = new QPushButton(QStringLiteral("Clear"), localOpsHost);
+    m_btnClearSel->setToolTip(QStringLiteral("Clear current selection"));
+    m_btnPreview = new QPushButton(QStringLiteral("Preview"), localOpsHost);
+    m_btnPreview->setToolTip(QStringLiteral("Preview selected image or text file"));
+    m_btnNewFolder = new QPushButton(QStringLiteral("New Folder"), localOpsHost);
+    m_btnNewFolder->setToolTip(QStringLiteral("Create a new folder in the current directory"));
+    m_btnRename = new QPushButton(QStringLiteral("Rename"), localOpsHost);
+    m_btnRename->setToolTip(QStringLiteral("Rename the selected file or folder"));
+    m_btnDelete = new QPushButton(QStringLiteral("Delete"), localOpsHost);
+    m_btnDelete->setToolTip(QStringLiteral("Permanently delete selected local items (asks confirmation)"));
+    m_btnDelete->setStyleSheet(QStringLiteral(
+        "QPushButton { background: rgba(239, 68, 68, 0.16); border: 1.2px solid rgba(252, 165, 165, 0.48); color: #FEE2E2; }"
+        "QPushButton:hover { background: rgba(239, 68, 68, 0.28); border-color: rgba(252, 165, 165, 0.72); }"));
+    for (auto* b : {m_btnSelectAll, m_btnClearSel, m_btnPreview, m_btnNewFolder, m_btnRename, m_btnDelete}) {
+        b->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        localOpsFlow->addWidget(b);
+    }
+    root->addWidget(localOpsHost);
 
     auto* queueRow = new QHBoxLayout();
+    queueRow->setSpacing(8);
     m_lblQueue = new QLabel(QStringLiteral("Queue: 0"), this);
     m_btnAddToQueue = new QPushButton(QStringLiteral("Add to Queue"), this);
+    m_btnAddToQueue->setToolTip(QStringLiteral("Add selected items to the copy-only transfer queue"));
     m_btnSendQueue = new QPushButton(QStringLiteral("Send Queued →"), this);
+    m_btnSendQueue->setToolTip(QStringLiteral("Open Connect Device to send queued files"));
+    m_btnSendQueue->setStyleSheet(QStringLiteral(
+        "QPushButton { background: rgba(255, 255, 255, 0.22); border: 1.4px solid rgba(255, 255, 255, 0.60); color: #FFFFFF; font-weight: 700; }"
+        "QPushButton:hover { background: rgba(255, 255, 255, 0.32); border-color: rgba(255, 255, 255, 0.85); }"));
+    m_btnAddToQueue->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    m_btnSendQueue->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     queueRow->addWidget(m_lblQueue, 1);
     queueRow->addWidget(m_btnAddToQueue);
     queueRow->addWidget(m_btnSendQueue);
     root->addLayout(queueRow);
 
-    connect(m_tabImages, &QPushButton::clicked, this, [this]() { setTab(Tab::Images); });
-    connect(m_tabFiles, &QPushButton::clicked, this, [this]() { setTab(Tab::Files); });
-    connect(m_tabFolders, &QPushButton::clicked, this, [this]() { setTab(Tab::Folders); });
+    connect(m_tabSelector, &LiquidSegmentedSelector::selectionChanged, this, [this](int idx, const QString&) {
+        setTab(static_cast<Tab>(idx));
+    });
     connect(m_volumesCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
         QString p = m_volumesCombo->itemData(idx).toString();
         if (!p.isEmpty()) navigateTo(p);
@@ -172,9 +198,9 @@ FileManagerWidget::~FileManagerWidget() {
 
 void FileManagerWidget::setTab(Tab t) {
     m_tab = t;
-    m_tabImages->setChecked(t == Tab::Images);
-    m_tabFiles->setChecked(t == Tab::Files);
-    m_tabFolders->setChecked(t == Tab::Folders);
+    if (m_tabSelector) {
+        m_tabSelector->setCurrentIndex(static_cast<int>(t), false);
+    }
     if (t == Tab::Images) {
         setGridMode(true);
     }

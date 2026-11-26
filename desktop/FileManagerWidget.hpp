@@ -1,5 +1,7 @@
 #pragma once
 
+#include "LiquidSegmentedSelector.hpp"
+
 #include <QCache>
 #include <QCheckBox>
 #include <QComboBox>
@@ -99,9 +101,7 @@ private:
     std::atomic_uint64_t m_loadGeneration{0};
     QFutureWatcher<QList<FileEntryMeta>>* m_dirWatcher = nullptr;
 
-    QPushButton* m_tabImages = nullptr;
-    QPushButton* m_tabFiles = nullptr;
-    QPushButton* m_tabFolders = nullptr;
+    LiquidSegmentedSelector* m_tabSelector = nullptr;
     QPushButton* m_btnUp = nullptr;
     QPushButton* m_btnGrid = nullptr;
     QPushButton* m_btnHidden = nullptr;

@@ -37,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sasText: TextView
     private lateinit var selectionText: TextView
     private lateinit var browserPathText: TextView
+    private lateinit var emptyBrowserText: TextView
     private lateinit var recentHistoryText: TextView
     private lateinit var transferScreenSummary: TextView
     private lateinit var transferFileListText: TextView
@@ -52,6 +53,9 @@ class MainActivity : AppCompatActivity() {
     private var discoveredPeers: List<WifiP2pDevice> = emptyList()
     private var currentEntries: List<BrowserEntry> = emptyList()
     private var sortMode: Int = 0 // 0=Name, 1=Size, 2=Type
+    private var activeCategoryId: String = "files"
+    private val categoryScrollStates = mutableMapOf<String, android.os.Parcelable?>()
+    private lateinit var browserRecyclerView: RecyclerView
     private val selectedMap = linkedMapOf<String, SelectedFile>()
     private val selectedIds = mutableSetOf<String>()
     private var currentDir: File = Environment.getExternalStorageDirectory()
@@ -91,7 +95,11 @@ class MainActivity : AppCompatActivity() {
         }
         val query = findViewById<android.widget.EditText>(R.id.searchInput).text?.toString()?.trim().orEmpty()
         val filtered = if (query.isEmpty()) sorted else sorted.filter { it.title.contains(query, ignoreCase = true) }
+        emptyBrowserText.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
         browserAdapter.submitList(filtered)
+        categoryScrollStates[activeCategoryId]?.let { state ->
+            browserRecyclerView.layoutManager?.onRestoreInstanceState(state)
+        }
     }
 
     private fun loadDirectory(dir: File) {
@@ -150,6 +158,7 @@ class MainActivity : AppCompatActivity() {
         sasText = findViewById(R.id.sasText)
         selectionText = findViewById(R.id.selectionText)
         browserPathText = findViewById(R.id.browserPathText)
+        emptyBrowserText = findViewById(R.id.emptyBrowserText)
         recentHistoryText = findViewById(R.id.recentHistoryText)
         transferScreenSummary = findViewById(R.id.transferScreenSummary)
         transferFileListText = findViewById(R.id.transferFileListText)
@@ -158,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         btnFolderUp = findViewById(R.id.btnFolderUp)
 
         val recycler: RecyclerView = findViewById(R.id.browserRecyclerView)
+        browserRecyclerView = recycler
         recycler.layoutManager = LinearLayoutManager(this)
         browserAdapter = BrowserAdapter(
             context = this,
@@ -203,30 +213,36 @@ class MainActivity : AppCompatActivity() {
             p2pController.connectToPeer(dev, band)
         }
         deviceRecycler.adapter = deviceAdapter
-        val btnSelectFiles: MaterialButton = findViewById(R.id.btnSelectFiles)
-        val btnPhotos: MaterialButton = findViewById(R.id.btnPhotos)
-        val btnVideos: MaterialButton = findViewById(R.id.btnVideos)
-        val btnAudio: MaterialButton = findViewById(R.id.btnAudio)
-        val btnApps: MaterialButton = findViewById(R.id.btnApps)
+        val categorySelector: LiquidSegmentedSelectorView = findViewById(R.id.categorySelector)
         val btnSort: MaterialButton = findViewById(R.id.btnSort)
         val btnSelectAll: MaterialButton = findViewById(R.id.btnSelectAll)
         val btnViewMode: MaterialButton = findViewById(R.id.btnViewMode)
         val searchInput: android.widget.EditText = findViewById(R.id.searchInput)
-        val tabShare: MaterialButton = findViewById(R.id.tabShare)
-        val tabHistory: MaterialButton = findViewById(R.id.tabHistory)
+        val homeTabSelector: LiquidSegmentedSelectorView = findViewById(R.id.homeTabSelector)
         val shareActionsContainer: View = findViewById(R.id.shareActionsContainer)
         val btnTransfer: MaterialButton = findViewById(R.id.btnTransfer)
 
-        tabShare.setOnClickListener {
-            shareActionsContainer.visibility = View.VISIBLE
-            tabShare.setBackgroundColor(android.graphics.Color.parseColor("#442962FF"))
-            tabHistory.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        homeTabSelector.setSegments(
+            listOf(
+                LiquidSegmentedSelectorView.Segment("share", "Share"),
+                LiquidSegmentedSelectorView.Segment("history", "History")
+            ),
+            initialIndex = 0
+        )
+        homeTabSelector.onSegmentSelected = { _, seg ->
+            shareActionsContainer.visibility = if (seg.id == "share") View.VISIBLE else View.GONE
         }
-        tabHistory.setOnClickListener {
-            shareActionsContainer.visibility = View.GONE
-            tabHistory.setBackgroundColor(android.graphics.Color.parseColor("#442962FF"))
-            tabShare.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        }
+
+        categorySelector.setSegments(
+            listOf(
+                LiquidSegmentedSelectorView.Segment("files", "Files"),
+                LiquidSegmentedSelectorView.Segment("images", "Images"),
+                LiquidSegmentedSelectorView.Segment("videos", "Videos"),
+                LiquidSegmentedSelectorView.Segment("audio", "Audio"),
+                LiquidSegmentedSelectorView.Segment("apps", "Apps")
+            ),
+            initialIndex = 0
+        )
 
         btnViewMode.setOnClickListener {
             browserAdapter.isGridMode = !browserAdapter.isGridMode
@@ -278,7 +294,9 @@ class MainActivity : AppCompatActivity() {
 
         btnHomeSend.setOnClickListener {
             showPage(selectPage)
-            loadDirectory(Environment.getExternalStorageDirectory())
+            categorySelector.setSelectedIndex(0, notify = false)
+            activeCategoryId = "files"
+            loadDirectory(currentDir)
         }
         btnHomeReceive.setOnClickListener {
             showPage(scanPage)
@@ -307,16 +325,71 @@ class MainActivity : AppCompatActivity() {
         btnBackFromScan.setOnClickListener { showPage(selectPage) }
         btnBackToSetup.setOnClickListener { showPage(homePage) }
 
-        btnSelectFiles.setOnClickListener { loadDirectory(Environment.getExternalStorageDirectory()) }
-        btnPhotos.setOnClickListener { loadMediaCategory("Photos") { MediaBrowser.queryImages(this, 200) } }
-        btnVideos.setOnClickListener { loadMediaCategory("Videos") { MediaBrowser.queryVideos(this, 200) } }
-        btnAudio.setOnClickListener { loadMediaCategory("Audio") { MediaBrowser.queryAudio(this, 200) } }
-        btnApps.setOnClickListener {
-            btnFolderUp.visibility = View.GONE
-            browserPathText.text = "Installed Apps"
-            lifecycleScope.launch(Dispatchers.IO) {
-                val apps = InAppFileManager.listInstalledAppsWithIcons(this@MainActivity)
-                withContext(Dispatchers.Main) { applySortAndShow(apps) }
+        var categoryLoadSeq = 0L
+        categorySelector.onSegmentSelected = { _, seg ->
+            categoryScrollStates[activeCategoryId] = browserRecyclerView.layoutManager?.onSaveInstanceState()
+            activeCategoryId = seg.id
+            val seq = ++categoryLoadSeq
+            emptyBrowserText.visibility = View.GONE
+            browserAdapter.submitList(emptyList())
+            when (seg.id) {
+                "files" -> loadDirectory(currentDir)
+                "images" -> {
+                    btnFolderUp.visibility = View.GONE
+                    browserPathText.text = "Images"
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val entries = MediaBrowser.queryImages(this@MainActivity, 200).map { sf ->
+                            BrowserEntry(
+                                id = sf.uri.toString(),
+                                title = sf.relativePath.substringAfterLast('/'),
+                                subtitle = "%.2f MB".format(sf.size / (1024.0 * 1024.0)),
+                                isDirectory = false,
+                                selectedFile = sf
+                            )
+                        }
+                        withContext(Dispatchers.Main) { if (seq == categoryLoadSeq) applySortAndShow(entries) }
+                    }
+                }
+                "videos" -> {
+                    btnFolderUp.visibility = View.GONE
+                    browserPathText.text = "Videos"
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val entries = MediaBrowser.queryVideos(this@MainActivity, 200).map { sf ->
+                            BrowserEntry(
+                                id = sf.uri.toString(),
+                                title = sf.relativePath.substringAfterLast('/'),
+                                subtitle = "%.2f MB".format(sf.size / (1024.0 * 1024.0)),
+                                isDirectory = false,
+                                selectedFile = sf
+                            )
+                        }
+                        withContext(Dispatchers.Main) { if (seq == categoryLoadSeq) applySortAndShow(entries) }
+                    }
+                }
+                "audio" -> {
+                    btnFolderUp.visibility = View.GONE
+                    browserPathText.text = "Audio"
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val entries = MediaBrowser.queryAudio(this@MainActivity, 200).map { sf ->
+                            BrowserEntry(
+                                id = sf.uri.toString(),
+                                title = sf.relativePath.substringAfterLast('/'),
+                                subtitle = "%.2f MB".format(sf.size / (1024.0 * 1024.0)),
+                                isDirectory = false,
+                                selectedFile = sf
+                            )
+                        }
+                        withContext(Dispatchers.Main) { if (seq == categoryLoadSeq) applySortAndShow(entries) }
+                    }
+                }
+                "apps" -> {
+                    btnFolderUp.visibility = View.GONE
+                    browserPathText.text = "Installed Apps"
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val apps = InAppFileManager.listInstalledAppsWithIcons(this@MainActivity)
+                        withContext(Dispatchers.Main) { if (seq == categoryLoadSeq) applySortAndShow(apps) }
+                    }
+                }
             }
         }
 

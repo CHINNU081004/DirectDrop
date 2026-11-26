@@ -25,7 +25,9 @@ add_executable(directdrop_desktop
     AdaptiveWifiPolicy.hpp
     LiquidDropProgressBar.hpp
     LiquidGlassPhysics.hpp
+    LiquidSegmentedSelector.hpp
     LiquidBandSelector.hpp
+    FlowLayout.hpp
     LiquidDeviceCard.hpp
     LiquidSidebar.hpp
     RadarScanWidget.hpp

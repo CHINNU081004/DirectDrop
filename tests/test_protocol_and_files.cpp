@@ -233,6 +233,27 @@ private slots:
         QVERIFY(cap.checked);
         QVERIFY(!cap.summary.isEmpty());
     }
+
+    void testSegmentedSelectorAndButtonSizing() {
+        LiquidSegmentedSelector sel({QStringLiteral("Images"), QStringLiteral("Files"), QStringLiteral("Folders")});
+        sel.resize(320, 40);
+        QCOMPARE(sel.currentIndex(), 0);
+        sel.setCurrentIndex(2, true);
+        QCOMPARE(sel.currentIndex(), 2);
+        QCOMPARE(sel.currentText(), QStringLiteral("Folders"));
+
+        FileManagerWidget fm;
+        fm.resize(540, 520); // simulates narrow 780x560 window minus 210px sidebar
+        fm.show();
+        QTest::qWait(80);
+        const auto buttons = fm.findChildren<QPushButton*>();
+        QVERIFY(!buttons.isEmpty());
+        for (QPushButton* btn : buttons) {
+            if (!btn->isVisibleTo(&fm)) continue;
+            const int textW = btn->fontMetrics().horizontalAdvance(btn->text());
+            QVERIFY2(btn->width() >= textW, qPrintable(QStringLiteral("Clipped button: %1").arg(btn->text())));
+        }
+    }
 };
 
 QTEST_MAIN(DirectDropTests)

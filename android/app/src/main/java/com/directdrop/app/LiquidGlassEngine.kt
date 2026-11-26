@@ -40,6 +40,14 @@ object MotionPrefs {
     }
 }
 
+object LiquidGlassTokens {
+    val surfaceNeutral: Int = Color.argb(28, 255, 255, 255)
+    val surfaceElevated: Int = Color.argb(44, 255, 255, 255)
+    val rimStroke: Int = Color.argb(95, 255, 255, 255)
+    val textPrimary: Int = Color.WHITE
+    val textSecondary: Int = Color.argb(200, 226, 232, 240)
+}
+
 /**
  * Draws a predominantly transparent, colorless dimensional glass lens
  * with a subtle neutral interior, depth shadow, and a stable, restrained

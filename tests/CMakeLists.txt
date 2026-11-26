@@ -4,6 +4,7 @@ add_executable(directdrop_tests
     test_protocol_and_files.cpp
     ../desktop/FileManagerWidget.hpp
     ../desktop/FileManagerWidget.cpp
+    ../desktop/LiquidSegmentedSelector.hpp
     ../desktop/LiquidSidebar.hpp
     ../desktop/TlsServer.hpp
     ../desktop/TlsServer.cpp

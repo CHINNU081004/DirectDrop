@@ -64,8 +64,15 @@ class LiquidBandSelectorView @JvmOverloads constructor(
 
     fun setBand(band: Band, notify: Boolean = false) {
         selectedBand = band
-        thumbPos.target = band.ordinal.toFloat()
-        startLoop()
+        if (MotionPrefs.isReducedMotion(context)) {
+            thumbPos.value = band.ordinal.toFloat()
+            thumbPos.target = band.ordinal.toFloat()
+            thumbPos.velocity = 0f
+            invalidate()
+        } else {
+            thumbPos.target = band.ordinal.toFloat()
+            startLoop()
+        }
         if (notify) onBandChanged?.invoke(band)
     }
 

@@ -1,5 +1,6 @@
 #include "MainWindow.hpp"
 #include "AdaptiveWifiPolicy.hpp"
+#include "FlowLayout.hpp"
 #include "LiquidBandSelector.hpp"
 #include "LiquidDeviceCard.hpp"
 #include "LiquidDropProgressBar.hpp"
@@ -33,13 +34,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         "QWidget#shellRoot, QScrollArea, QStackedWidget, QWidget#pageOverview, QWidget#pageFiles, QWidget#pageConnect, QWidget#pageTransfer, QWidget#pageStorage { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0B1220, stop:0.5 #141E30, stop:1 #0F172A); border: none; }"
         "QWidget#liquidSidebar { background: rgba(255, 255, 255, 0.04); border-right: 1px solid rgba(255, 255, 255, 0.16); }"
         "QGroupBox { background: rgba(255, 255, 255, 0.07); border: 1.2px solid rgba(255, 255, 255, 0.22); border-radius: 18px; margin-top: 14px; padding: 14px; color: #F1F5F9; font-weight: 600; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 16px; padding: 0 8px; color: rgba(255,255,255,0.85); font-weight: 700; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 16px; padding: 0 8px; color: rgba(255,255,255,0.88); font-weight: 700; }"
         "QLabel { color: #F1F5F9; background: transparent; }"
-        "QPushButton { background: rgba(255, 255, 255, 0.12); border: 1.2px solid rgba(255, 255, 255, 0.32); border-radius: 18px; min-height: 36px; padding: 2px 18px; color: #FFFFFF; font-weight: 600; }"
-        "QPushButton:hover { background: rgba(255, 255, 255, 0.22); border-color: rgba(255, 255, 255, 0.55); }"
-        "QPushButton:pressed { background: rgba(255, 255, 255, 0.28); }"
-        "QListWidget, QPlainTextEdit, QComboBox, QLineEdit { background: rgba(255, 255, 255, 0.07); border: 1.2px solid rgba(255, 255, 255, 0.24); border-radius: 12px; color: #F1F5F9; padding: 6px 12px; }"
-        "QComboBox QAbstractItemView { background: rgba(15, 23, 42, 0.92); border: 1.2px solid rgba(255, 255, 255, 0.34); border-radius: 12px; color: #FFFFFF; selection-background-color: rgba(255, 255, 255, 0.20); outline: none; }"
+        "QPushButton { background: rgba(255, 255, 255, 0.10); border: 1.2px solid rgba(255, 255, 255, 0.28); border-radius: 17px; min-height: 34px; padding: 4px 14px; color: #F8FAFC; font-size: 13px; font-weight: 600; }"
+        "QPushButton:hover { background: rgba(255, 255, 255, 0.20); border-color: rgba(255, 255, 255, 0.52); }"
+        "QPushButton:pressed { background: rgba(255, 255, 255, 0.26); }"
+        "QPushButton:checked { background: rgba(255, 255, 255, 0.22); border-color: rgba(255, 255, 255, 0.68); color: #FFFFFF; }"
+        "QPushButton:disabled { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.12); color: rgba(255, 255, 255, 0.40); }"
+        "QListWidget, QPlainTextEdit, QComboBox, QLineEdit { background: rgba(255, 255, 255, 0.07); border: 1.2px solid rgba(255, 255, 255, 0.24); border-radius: 12px; color: #F1F5F9; padding: 6px 12px; font-size: 13px; }"
+        "QListWidget::item:selected { background: rgba(255, 255, 255, 0.16); border-radius: 8px; color: #FFFFFF; }"
+        "QListWidget::item:hover { background: rgba(255, 255, 255, 0.09); border-radius: 8px; }"
+        "QComboBox QAbstractItemView { background: rgba(15, 23, 42, 0.94); border: 1.2px solid rgba(255, 255, 255, 0.34); border-radius: 12px; color: #FFFFFF; selection-background-color: rgba(255, 255, 255, 0.20); outline: none; }"
+        "QDialog, QMessageBox { background: #0F172A; color: #F1F5F9; }"
+        "QToolTip { background: rgba(15, 23, 42, 0.94); color: #F8FAFC; border: 1px solid rgba(255, 255, 255, 0.32); border-radius: 8px; padding: 5px 8px; }"
+        "QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }"
+        "QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.22); border-radius: 4px; min-height: 24px; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
     ));
 
     m_p2p = new WifiP2pBackend(this);
@@ -67,17 +77,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     ovLayout->setContentsMargins(20, 20, 20, 20);
     ovLayout->setSpacing(14);
 
-    auto* topBox = new QGroupBox(QStringLiteral("Connection & Adaptive Wi-Fi Policy"), overviewPage);
+    auto* topBox = new QGroupBox(QStringLiteral("Connection && Adaptive Wi-Fi Policy"), overviewPage);
     auto* topVLayout = new QVBoxLayout(topBox);
-    auto* topLayout = new QHBoxLayout();
-    m_lblTransport = new QLabel(QStringLiteral("Transport: Wi-Fi Direct (TLS 1.3)"), topBox);
-    m_lblP2pStatus = new QLabel(QStringLiteral("Status: Ready"), topBox);
-    auto* bandSel = new LiquidBandSelector(topBox);
+    auto* topHost = new QWidget(topBox);
+    auto* topLayout = new FlowLayout(topHost, 0, 12, 8);
+    m_lblTransport = new QLabel(QStringLiteral("Transport: Wi-Fi Direct (TLS 1.3)"), topHost);
+    m_lblP2pStatus = new QLabel(QStringLiteral("Status: Ready"), topHost);
+    auto* bandSel = new LiquidBandSelector(topHost);
     m_bandSelector = bandSel;
-    m_btnOpenConnectPage = new QPushButton(QStringLiteral("Connect Device →"), topBox);
+    m_btnOpenConnectPage = new QPushButton(QStringLiteral("Connect Device →"), topHost);
+    m_btnOpenConnectPage->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     topLayout->addWidget(m_lblTransport);
     topLayout->addWidget(bandSel);
-    topLayout->addWidget(m_lblP2pStatus, 1);
+    topLayout->addWidget(m_lblP2pStatus);
     topLayout->addWidget(m_btnOpenConnectPage);
     auto cap = AdaptiveWifiPolicy::probeCapabilities();
     m_lblAdapterCap = new QLabel(QStringLiteral("Adapter: %1").arg(cap.summary), topBox);
@@ -85,7 +97,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_lblBandPolicy = new QLabel(AdaptiveWifiPolicy::describeMode(BandMode::AutoRecommended, cap), topBox);
     m_lblBandPolicy->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.82); font-size: 12px;"));
     m_lblBandPolicy->setWordWrap(true);
-    topVLayout->addLayout(topLayout);
+    topVLayout->addWidget(topHost);
     topVLayout->addWidget(m_lblAdapterCap);
     topVLayout->addWidget(m_lblBandPolicy);
     ovLayout->addWidget(topBox);
@@ -124,20 +136,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connRoot->setContentsMargins(20, 20, 20, 20);
     connRoot->setSpacing(12);
 
-    auto* connHeader = new QHBoxLayout();
-    m_btnBackFromConnect = new QPushButton(QStringLiteral("← Overview"), connectPage);
-    auto* lblConnTitle = new QLabel(QStringLiteral("Connect Device"), connectPage);
-    lblConnTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #FFFFFF;"));
-    m_radarWidget = new RadarScanWidget(connectPage);
-    m_btnScan = new QPushButton(QStringLiteral("Rescan"), connectPage);
-    m_btnConnectPeer = new QPushButton(QStringLiteral("Connect Selected"), connectPage);
+    auto* connHeaderHost = new QWidget(connectPage);
+    auto* connHeader = new FlowLayout(connHeaderHost, 0, 10, 8);
+    m_btnBackFromConnect = new QPushButton(QStringLiteral("← Overview"), connHeaderHost);
+    auto* lblConnTitle = new QLabel(QStringLiteral("Connect Device"), connHeaderHost);
+    lblConnTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #FFFFFF; padding: 4px 6px;"));
+    m_radarWidget = new RadarScanWidget(connHeaderHost);
+    m_btnScan = new QPushButton(QStringLiteral("Rescan"), connHeaderHost);
+    m_btnConnectPeer = new QPushButton(QStringLiteral("Connect Selected"), connHeaderHost);
+    for (auto* b : {m_btnBackFromConnect, m_btnScan, m_btnConnectPeer}) {
+        b->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    }
     connHeader->addWidget(m_btnBackFromConnect);
     connHeader->addWidget(lblConnTitle);
-    connHeader->addStretch();
     connHeader->addWidget(m_radarWidget);
     connHeader->addWidget(m_btnScan);
     connHeader->addWidget(m_btnConnectPeer);
-    connRoot->addLayout(connHeader);
+    connRoot->addWidget(connHeaderHost);
 
     auto* connBox = new QGroupBox(QStringLiteral("Nearby Devices"), connectPage);
     auto* connBoxLayout = new QVBoxLayout(connBox);
