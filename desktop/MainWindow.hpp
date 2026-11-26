@@ -3,6 +3,7 @@
 #include "AdaptiveWifiPolicy.hpp"
 #include "FileManagerWidget.hpp"
 #include "LanDiscovery.hpp"
+#include "LearnMorePage.hpp"
 #include "TlsServer.hpp"
 #include "WifiP2pBackend.hpp"
 
@@ -48,12 +49,15 @@ private slots:
 private:
     void updateDiskSpaceLabel();
     void applyBandPreference(int idx, bool persist);
+    void refreshCompatibilityUi();
 
     WifiP2pBackend* m_p2p = nullptr;
     TlsReceiverServer* m_server = nullptr;
     LanDiscoveryService* m_lanDiscovery = nullptr;
     AdapterCapabilities m_adapterCap;
+    PeerCapabilities m_peerCap;
     TransportKind m_activeTransport = TransportKind::WifiDirectP2p;
+    ReachabilityState m_lanReachability = ReachabilityState::NotTested;
     QString m_lanTargetIp;
     quint16 m_lanTargetPort = 47291;
 
@@ -79,10 +83,16 @@ private:
     QWidget* m_radarWidget = nullptr;
     QWidget* m_bandSelector = nullptr;
     QWidget* m_connectBandSelector = nullptr;
+    QWidget* m_transportSelector = nullptr;
     QLabel* m_lblConnBandStatus = nullptr;
     QLabel* m_lblConnWhy = nullptr;
+    QLabel* m_lblCompatTable = nullptr;
+    QLabel* m_lblExpectedPerf = nullptr;
+    LearnMorePage* m_learnMorePage = nullptr;
     QLineEdit* m_lanIpEdit = nullptr;
     QPushButton* m_btnConnectLan = nullptr;
+    QPushButton* m_btnTestLan = nullptr;
+    QPushButton* m_btnLearnMore = nullptr;
     QListWidget* m_lanPeerList = nullptr;
     QWidget* m_deviceCardsHost = nullptr;
     QLabel* m_lblSendQueue = nullptr;

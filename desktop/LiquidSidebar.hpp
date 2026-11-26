@@ -86,7 +86,7 @@ public:
 
         auto* brand = new QLabel(QStringLiteral("DirectDrop"), this);
         brand->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #FFFFFF; padding: 4px 8px; background: transparent;"));
-        auto* sub = new QLabel(QStringLiteral("Wi-Fi Direct • v1.4.0"), this);
+        auto* sub = new QLabel(QStringLiteral("Wi-Fi Direct • v1.4.1"), this);
         sub->setStyleSheet(QStringLiteral("font-size: 11px; color: rgba(255,255,255,0.65); padding: 0 8px 10px 8px; background: transparent;"));
         root->addWidget(brand);
         root->addWidget(sub);

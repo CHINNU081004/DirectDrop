@@ -4,6 +4,7 @@ add_executable(directdrop_tests
     test_protocol_and_files.cpp
     ../desktop/FileManagerWidget.hpp
     ../desktop/FileManagerWidget.cpp
+    ../desktop/LearnMorePage.hpp
     ../desktop/LiquidSegmentedSelector.hpp
     ../desktop/LiquidBandSelector.hpp
     ../desktop/LiquidSidebar.hpp

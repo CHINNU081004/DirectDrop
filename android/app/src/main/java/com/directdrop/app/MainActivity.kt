@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var selectPage: View
     private lateinit var scanPage: View
     private lateinit var transferScreen: View
+    private lateinit var learnMorePage: View
 
     private lateinit var statusText: TextView
     private lateinit var sasText: TextView
@@ -75,7 +76,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPage(target: View) {
-        listOf(homePage, selectPage, scanPage, transferScreen).forEach { page ->
+        listOf(homePage, selectPage, scanPage, transferScreen, learnMorePage).forEach { page ->
             if (page == target) {
                 page.alpha = 0f
                 page.visibility = View.VISIBLE
@@ -153,6 +154,7 @@ class MainActivity : AppCompatActivity() {
         selectPage = findViewById(R.id.selectPage)
         scanPage = findViewById(R.id.scanPage)
         transferScreen = findViewById(R.id.transferScreen)
+        learnMorePage = findViewById(R.id.learnMorePage)
 
         statusText = findViewById(R.id.statusText)
         sasText = findViewById(R.id.sasText)
@@ -200,19 +202,54 @@ class MainActivity : AppCompatActivity() {
 
         val btnDiscover: MaterialButton = findViewById(R.id.btnDiscover)
         val btnConnect: MaterialButton = findViewById(R.id.btnConnect)
+        val transportSelector: LiquidSegmentedSelectorView = findViewById(R.id.transportSelector)
         val bandSelector: LiquidBandSelectorView = findViewById(R.id.bandSelector)
         val bandStatusText: TextView = findViewById(R.id.bandStatusText)
         val bandWhyText: TextView = findViewById(R.id.bandWhyText)
+        val expectedPerfText: TextView = findViewById(R.id.expectedPerfText)
+        val compatComparisonText: TextView = findViewById(R.id.compatComparisonText)
         val lanIpInput: android.widget.EditText = findViewById(R.id.lanIpInput)
+        val btnVerifyLan: MaterialButton = findViewById(R.id.btnVerifyLan)
         val btnConnectLan: MaterialButton = findViewById(R.id.btnConnectLan)
+        val btnLearnMore: MaterialButton = findViewById(R.id.btnLearnMore)
+        val btnBackFromLearnMore: MaterialButton = findViewById(R.id.btnBackFromLearnMore)
+        val learnMoreBodyText: TextView = findViewById(R.id.learnMoreBodyText)
+
         var activeTransport = ActiveTransport.WIFI_DIRECT
+        var lanReachability = ReachabilityState.NOT_TESTED
+        var currentPeerCaps = PeerCapabilities()
+
+        transportSelector.setSegments(
+            listOf(
+                LiquidSegmentedSelectorView.Segment("p2p", "Direct (P2P)"),
+                LiquidSegmentedSelectorView.Segment("lan", "Through Router")
+            ),
+            initialIndex = 0
+        )
 
         fun refreshBandTelemetry(band: LiquidBandSelectorView.Band) {
             val cap = BandCapabilityManager.probe(this)
-            val eval = BandCapabilityManager.evaluate(band, cap, activeTransport)
-            bandStatusText.text = "${eval.statusHeadline} • Active: ${eval.activeBandLabel}"
-            bandWhyText.text = "Why this option? ${eval.explanation}"
+            val report = BandCapabilityManager.compareAndRecommend(cap, currentPeerCaps, activeTransport, band, lanReachability)
+            bandStatusText.text = "${report.recommendationHeadline} • Active: ${report.activeBandLabel}"
+            bandWhyText.text = "Why this option? ${report.recommendationReason}"
+            expectedPerfText.text = "Expected performance: ${report.expectedPerformance}"
+            compatComparisonText.text = report.rows.joinToString("\n") {
+                "${it.label.padEnd(13)} | You: ${it.localVal.padEnd(11)} | Peer: ${it.peerVal}"
+            }
+            learnMoreBodyText.text = BandCapabilityManager.buildLearnMoreSections(cap, report)
+                .joinToString("\n\n") { (title, body) -> "$title\n$body" }
         }
+
+        transportSelector.onSegmentSelected = { _, seg ->
+            activeTransport = if (seg.id == "p2p") ActiveTransport.WIFI_DIRECT else ActiveTransport.ROUTER_LAN
+            refreshBandTelemetry(bandSelector.selectedBand)
+        }
+
+        btnLearnMore.setOnClickListener {
+            refreshBandTelemetry(bandSelector.selectedBand)
+            showPage(learnMorePage)
+        }
+        btnBackFromLearnMore.setOnClickListener { showPage(scanPage) }
 
         val savedBand = BandCapabilityManager.loadSavedBand(this)
         bandSelector.setBand(savedBand, notify = false)
@@ -222,6 +259,23 @@ class MainActivity : AppCompatActivity() {
             refreshBandTelemetry(band)
         }
 
+        btnVerifyLan.setOnClickListener {
+            val ip = lanIpInput.text?.toString()?.trim().orEmpty()
+            if (ip.isEmpty()) {
+                statusText.text = "Enter peer LAN IP first to verify reachability."
+                return@setOnClickListener
+            }
+            statusText.text = "Checking LAN reachability to $ip:47291..."
+            lifecycleScope.launch(Dispatchers.IO) {
+                val res = BandCapabilityManager.probeTcpReachability(ip, 47291)
+                withContext(Dispatchers.Main) {
+                    lanReachability = res
+                    statusText.text = "LAN check ($ip:47291): ${res.label}"
+                    refreshBandTelemetry(bandSelector.selectedBand)
+                }
+            }
+        }
+
         btnConnectLan.setOnClickListener {
             val ip = lanIpInput.text?.toString()?.trim().orEmpty()
             if (ip.isEmpty()) {
@@ -229,9 +283,16 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             connectedHostIp = ip
-            activeTransport = ActiveTransport.SECURE_LAN_TLS
-            statusText.text = "Secure LAN target: $ip:47291 (TLS 1.3 + SAS)"
-            refreshBandTelemetry(bandSelector.selectedBand)
+            activeTransport = ActiveTransport.ROUTER_LAN
+            transportSelector.setSelectedIndex(1, notify = false)
+            statusText.text = "Router/LAN target: $ip:47291 (TLS 1.3 + SAS)"
+            lifecycleScope.launch(Dispatchers.IO) {
+                val res = BandCapabilityManager.probeTcpReachability(ip, 47291)
+                withContext(Dispatchers.Main) {
+                    lanReachability = res
+                    refreshBandTelemetry(bandSelector.selectedBand)
+                }
+            }
         }
 
         val deviceRecycler: RecyclerView = findViewById(R.id.deviceRecyclerView)

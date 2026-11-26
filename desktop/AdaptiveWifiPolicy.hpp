@@ -17,8 +17,7 @@ enum class BandMode {
 };
 
 enum class CapabilityState {
-    SupportedAndAvailable,
-    SupportedButUnavailable,
+    Supported,
     Unsupported,
     PermissionRequired,
     Unknown
@@ -26,48 +25,93 @@ enum class CapabilityState {
 
 enum class TransportKind {
     WifiDirectP2p,
-    SecureLanTcp,
-    ManualIpTls
+    RouterLan
+};
+
+enum class ReachabilityState {
+    NotTested,
+    Reachable,
+    Unreachable,
+    ClientIsolationSuspected
+};
+
+struct WifiBandCapabilities {
+    CapabilityState band24 = CapabilityState::Unknown;
+    CapabilityState band5 = CapabilityState::Unknown;
+    CapabilityState band6 = CapabilityState::Unknown;
+};
+
+struct WifiDirectCapabilities {
+    CapabilityState available = CapabilityState::Unknown;
+    CapabilityState band24 = CapabilityState::Unknown;
+    CapabilityState band5 = CapabilityState::Unknown;
+    CapabilityState band6 = CapabilityState::Unsupported; // NM wifi-p2p does not expose 6 GHz P2P forcing
+    bool bandControlExposed = false;
+};
+
+struct RouterLanCapabilities {
+    CapabilityState available = CapabilityState::Unknown;
+    int activeFrequencyMhz = 0;
+    double linkRateMbps = 0.0; // >0 only when reported by driver/iw
+    QString activeInterface;
+    QStringList lanAddresses;
 };
 
 struct AdapterCapabilities {
     bool checked = false;
+    bool iwAvailable = false;
     QString osName;
     QString cpuArch;
-    bool supports24GHz = false;
-    bool supports5GHz = false;
-    bool supports6GHz = false;
-    bool supportsP2p = false;
-    bool supportsConcurrent = false;
-    bool p2pBandControlExposed = false; // Linux NM wifi-p2p delegates channel to wpa_supplicant
-    bool hasLanInterface = false;
-    int activeFrequencyMhz = 0;         // >0 only when reliably queried from kernel/iw
-    QString activeInterface;
-    QStringList lanAddresses;
+    WifiBandCapabilities wifi;
+    WifiDirectCapabilities wifiDirect;
+    RouterLanCapabilities routerLan;
     QString summary;
+
+    // Compatibility accessors kept for existing callers/tests
+    bool supports24GHz() const { return wifi.band24 == CapabilityState::Supported; }
+    bool supports5GHz() const { return wifi.band5 == CapabilityState::Supported; }
+    bool supports6GHz() const { return wifi.band6 == CapabilityState::Supported; }
+    bool supportsP2p() const { return wifiDirect.available == CapabilityState::Supported; }
 };
 
 struct PeerCapabilities {
-    bool supports24GHz = true;
-    bool supports5GHz = false;
-    bool supports6GHz = false;
-    bool supportsP2p = false;
-    bool supportsLan = true;
+    QString name = QStringLiteral("Peer Device");
+    bool known = false;
+    WifiBandCapabilities wifi;
+    CapabilityState wifiDirectAvailable = CapabilityState::Unknown;
+    CapabilityState routerLanAvailable = CapabilityState::Unknown;
+    int activeFrequencyMhz = 0;
 };
 
-struct BandDecision {
-    BandMode requestedMode = BandMode::AutoRecommended;
-    BandMode effectiveTarget = BandMode::Band24GHz;
-    CapabilityState requestedState = CapabilityState::Unknown;
-    bool canHonorDirectly = false;
-    bool fallbackRecommended = false;
-    QString statusHeadline;
-    QString explanation;
+struct ComparisonRow {
+    QString label;
+    QString localValue;
+    QString peerValue;
+};
+
+struct TransferCompatibilityReport {
+    TransportKind recommendedTransport = TransportKind::RouterLan;
+    BandMode recommendedBand = BandMode::AutoRecommended;
+    QString recommendationHeadline;
+    QString recommendationReason;
     QString activeBandLabel;
+    QString expectedPerformance;
+    QStringList missingDiagnostics;
+    QList<ComparisonRow> rows;
 };
 
 class AdaptiveWifiPolicy {
 public:
+    static QString stateText(CapabilityState s) {
+        switch (s) {
+            case CapabilityState::Supported: return QStringLiteral("Supported");
+            case CapabilityState::Unsupported: return QStringLiteral("Unsupported");
+            case CapabilityState::PermissionRequired: return QStringLiteral("Permission required");
+            case CapabilityState::Unknown: return QStringLiteral("Unknown");
+        }
+        return QStringLiteral("Unknown");
+    }
+
     static QString bandLabel(BandMode m) {
         switch (m) {
             case BandMode::AutoRecommended: return QStringLiteral("Auto");
@@ -82,52 +126,64 @@ public:
         if (mhz >= 2400 && mhz <= 2500) return QStringLiteral("2.4 GHz (%1 MHz)").arg(mhz);
         if (mhz >= 5150 && mhz <= 5900) return QStringLiteral("5 GHz (%1 MHz)").arg(mhz);
         if (mhz >= 5925 && mhz <= 7125) return QStringLiteral("6 GHz (%1 MHz)").arg(mhz);
-        return QStringLiteral("Band information unavailable");
+        return QStringLiteral("Unknown / not reported");
     }
 
-    static AdapterCapabilities parseIwOutput(const QString& iwListOut, const QString& iwLinkOut = QString()) {
+    static AdapterCapabilities parseIwOutput(const QString& iwListOut, const QString& iwLinkOut = QString(), bool iwPresent = true) {
         AdapterCapabilities cap;
         cap.checked = true;
+        cap.iwAvailable = iwPresent && !iwListOut.isEmpty();
         cap.osName = QSysInfo::prettyProductName();
         cap.cpuArch = QSysInfo::currentCpuArchitecture();
 
-        // Parse MHz entries reliably: e.g. "2412 MHz", "5180 MHz", "5955 MHz"
-        static const QRegularExpression freqRe(QStringLiteral(R"(\b(\d{4})\s*MHz\b)"));
-        auto it = freqRe.globalMatch(iwListOut);
-        while (it.hasNext()) {
-            int mhz = it.next().captured(1).toInt();
-            if (mhz >= 2400 && mhz <= 2500) cap.supports24GHz = true;
-            else if (mhz >= 5150 && mhz <= 5900) cap.supports5GHz = true;
-            else if (mhz >= 5925 && mhz <= 7125) cap.supports6GHz = true;
-        }
+        if (cap.iwAvailable) {
+            static const QRegularExpression freqRe(QStringLiteral(R"(\b(\d{4})(?:\.\d+)?\s*MHz\b)"));
+            auto it = freqRe.globalMatch(iwListOut);
+            bool seen24 = false, seen5 = false, seen6 = false;
+            while (it.hasNext()) {
+                int mhz = it.next().captured(1).toInt();
+                if (mhz >= 2400 && mhz <= 2500) seen24 = true;
+                else if (mhz >= 5150 && mhz <= 5900) seen5 = true;
+                else if (mhz >= 5925 && mhz <= 7125) seen6 = true;
+            }
+            cap.wifi.band24 = seen24 ? CapabilityState::Supported : CapabilityState::Unsupported;
+            cap.wifi.band5 = seen5 ? CapabilityState::Supported : CapabilityState::Unsupported;
+            cap.wifi.band6 = seen6 ? CapabilityState::Supported : CapabilityState::Unsupported;
 
-        cap.supportsP2p = iwListOut.contains(QStringLiteral("P2P-client")) &&
-                          iwListOut.contains(QStringLiteral("P2P-GO"));
-        cap.supportsConcurrent = iwListOut.contains(QStringLiteral("#channels <= 2"));
-        cap.p2pBandControlExposed = false; // NM wifi-p2p D-Bus profile does not expose fixed band forcing
+            bool p2p = iwListOut.contains(QStringLiteral("P2P-client")) &&
+                       iwListOut.contains(QStringLiteral("P2P-GO"));
+            cap.wifiDirect.available = p2p ? CapabilityState::Supported : CapabilityState::Unsupported;
+            cap.wifiDirect.band24 = p2p ? cap.wifi.band24 : CapabilityState::Unsupported;
+            cap.wifiDirect.band5 = p2p ? cap.wifi.band5 : CapabilityState::Unsupported;
+            cap.wifiDirect.band6 = CapabilityState::Unsupported; // NM wifi-p2p delegates channel to wpa_supplicant
+            cap.wifiDirect.bandControlExposed = false;
+        } else {
+            // Missing `iw` must report Unknown rather than Unsupported
+            cap.wifi.band24 = CapabilityState::Unknown;
+            cap.wifi.band5 = CapabilityState::Unknown;
+            cap.wifi.band6 = CapabilityState::Unknown;
+            cap.wifiDirect.available = CapabilityState::Unknown;
+        }
 
         static const QRegularExpression linkFreqRe(QStringLiteral(R"(freq:\s*(\d{4}))"));
         auto lm = linkFreqRe.match(iwLinkOut);
-        if (lm.hasMatch()) {
-            cap.activeFrequencyMhz = lm.captured(1).toInt();
-        }
+        if (lm.hasMatch()) cap.routerLan.activeFrequencyMhz = lm.captured(1).toInt();
 
-        cap.summary = QStringLiteral("2.4G=%1 • 5G=%2 • 6G=%3 • P2P=%4 • Arch=%5")
-            .arg(cap.supports24GHz ? QStringLiteral("Yes") : QStringLiteral("No"))
-            .arg(cap.supports5GHz ? QStringLiteral("Yes") : QStringLiteral("No"))
-            .arg(cap.supports6GHz ? QStringLiteral("Yes") : QStringLiteral("No"))
-            .arg(cap.supportsP2p ? QStringLiteral("Yes") : QStringLiteral("No"))
-            .arg(cap.cpuArch);
+        static const QRegularExpression rateRe(QStringLiteral(R"(tx bitrate:\s*([0-9]+(?:\.[0-9]+)?)\s*MBit/s)"));
+        auto rm = rateRe.match(iwLinkOut);
+        if (rm.hasMatch()) cap.routerLan.linkRateMbps = rm.captured(1).toDouble();
+
+        cap.summary = QStringLiteral("Wi-Fi HW [2.4G=%1, 5G=%2, 6G=%3] • P2P=%4 • Arch=%5")
+            .arg(stateText(cap.wifi.band24), stateText(cap.wifi.band5), stateText(cap.wifi.band6),
+                 stateText(cap.wifiDirect.available), cap.cpuArch);
         return cap;
     }
 
     static AdapterCapabilities probeCapabilities() {
         QProcess proc;
         proc.start(QStringLiteral("iw"), {QStringLiteral("list")});
-        QString iwOut;
-        if (proc.waitForFinished(2500) && proc.exitCode() == 0) {
-            iwOut = QString::fromUtf8(proc.readAllStandardOutput());
-        }
+        bool iwOk = proc.waitForFinished(2500) && proc.exitCode() == 0;
+        QString iwOut = iwOk ? QString::fromUtf8(proc.readAllStandardOutput()) : QString();
 
         QString linkOut;
         QString activeIface;
@@ -146,7 +202,7 @@ public:
                 }
             }
         }
-        if (!activeIface.isEmpty()) {
+        if (!activeIface.isEmpty() && iwOk) {
             QProcess linkProc;
             linkProc.start(QStringLiteral("iw"), {QStringLiteral("dev"), activeIface, QStringLiteral("link")});
             if (linkProc.waitForFinished(1500) && linkProc.exitCode() == 0) {
@@ -154,90 +210,104 @@ public:
             }
         }
 
-        AdapterCapabilities cap = parseIwOutput(iwOut, linkOut);
-        if (iwOut.isEmpty()) {
-            cap.summary = QStringLiteral("iw unavailable on %1 (%2); LAN fallback ready")
-                              .arg(cap.osName, cap.cpuArch);
-        }
-        cap.activeInterface = activeIface;
-        cap.lanAddresses = lanIps;
-        cap.hasLanInterface = !lanIps.isEmpty();
+        AdapterCapabilities cap = parseIwOutput(iwOut, linkOut, iwOk);
+        cap.routerLan.activeInterface = activeIface;
+        cap.routerLan.lanAddresses = lanIps;
+        cap.routerLan.available = lanIps.isEmpty() ? CapabilityState::Unsupported : CapabilityState::Supported;
         return cap;
     }
 
-    static BandDecision evaluateBand(
-        BandMode requested,
-        const AdapterCapabilities& local,
-        const PeerCapabilities& peer,
-        TransportKind transport
-    ) {
-        BandDecision d;
-        d.requestedMode = requested;
-        d.activeBandLabel = local.activeFrequencyMhz > 0
-            ? activeBandFromMhz(local.activeFrequencyMhz)
-            : QStringLiteral("Band information unavailable");
-
-        if (requested == BandMode::AutoRecommended) {
-            d.requestedState = CapabilityState::SupportedAndAvailable;
-            d.canHonorDirectly = true;
-            if (local.supports6GHz && peer.supports6GHz && transport != TransportKind::WifiDirectP2p) {
-                d.effectiveTarget = BandMode::Band6GHz;
-            } else if (local.supports5GHz && peer.supports5GHz) {
-                d.effectiveTarget = BandMode::Band5GHz;
-            } else {
-                d.effectiveTarget = BandMode::Band24GHz;
-            }
-            d.statusHeadline = QStringLiteral("Auto — choosing the best available connection");
-            d.explanation = (transport == TransportKind::WifiDirectP2p && !local.p2pBandControlExposed)
-                ? QStringLiteral("Auto lets wpa_supplicant negotiate the best mutual channel (%1).")
-                      .arg(local.supports5GHz ? QStringLiteral("5 GHz preferred, 2.4 GHz fallback") : QStringLiteral("2.4 GHz"))
-                : QStringLiteral("Secure LAN uses the active OS/router Wi-Fi band (%1).").arg(d.activeBandLabel);
-            return d;
+    static QString estimatePerformance(const AdapterCapabilities& local, TransportKind transport) {
+        if (transport == TransportKind::RouterLan && local.routerLan.linkRateMbps > 0.0) {
+            double lowMBs = qMax(1.0, (local.routerLan.linkRateMbps * 0.40) / 8.0);
+            double highMBs = qMax(lowMBs, (local.routerLan.linkRateMbps * 0.65) / 8.0);
+            return QStringLiteral("Link rate: %1 Mbps • Estimated TCP range: ~%2–%3 MB/s (depends on router, signal, & storage)")
+                .arg(local.routerLan.linkRateMbps, 0, 'f', 0)
+                .arg(lowMBs, 0, 'f', 1)
+                .arg(highMBs, 0, 'f', 1);
         }
-
-        auto checkBand = [&](bool localSup, bool peerSup, const QString& label) {
-            if (!localSup) {
-                d.requestedState = CapabilityState::Unsupported;
-                d.canHonorDirectly = false;
-                d.fallbackRecommended = true;
-                d.statusHeadline = QStringLiteral("%1 unavailable — choose Auto or another band").arg(label);
-                d.explanation = QStringLiteral("Local adapter did not report %1 support (preference preserved).").arg(label);
-                return;
-            }
-            if (!peerSup) {
-                d.requestedState = CapabilityState::SupportedButUnavailable;
-                d.canHonorDirectly = false;
-                d.fallbackRecommended = true;
-                d.statusHeadline = QStringLiteral("%1 supported, but unavailable for this connection").arg(label);
-                d.explanation = QStringLiteral("Peer does not advertise %1 compatibility; choose Auto or a mutually supported band.").arg(label);
-                return;
-            }
-            if (transport == TransportKind::WifiDirectP2p && !local.p2pBandControlExposed) {
-                d.requestedState = CapabilityState::SupportedButUnavailable;
-                d.canHonorDirectly = false;
-                d.fallbackRecommended = true;
-                d.statusHeadline = QStringLiteral("%1 supported, but unavailable for Wi-Fi Direct control").arg(label);
-                d.explanation = QStringLiteral("Linux NetworkManager Wi-Fi Direct delegates channel selection to wpa_supplicant. Use Auto or Secure LAN on a %1 AP.").arg(label);
-                return;
-            }
-            d.requestedState = CapabilityState::SupportedAndAvailable;
-            d.canHonorDirectly = true;
-            d.effectiveTarget = requested;
-            d.statusHeadline = QStringLiteral("Manual preference: %1").arg(label);
-            d.explanation = (transport == TransportKind::SecureLanTcp || transport == TransportKind::ManualIpTls)
-                ? QStringLiteral("DirectDrop cannot force a router's band; active OS link reports: %1.").arg(d.activeBandLabel)
-                : QStringLiteral("Requesting %1 on supported transport.").arg(label);
-        };
-
-        if (requested == BandMode::Band24GHz) checkBand(local.supports24GHz, peer.supports24GHz, QStringLiteral("2.4 GHz"));
-        else if (requested == BandMode::Band5GHz) checkBand(local.supports5GHz, peer.supports5GHz, QStringLiteral("5 GHz"));
-        else if (requested == BandMode::Band6GHz) checkBand(local.supports6GHz, peer.supports6GHz, QStringLiteral("6 GHz"));
-        return d;
+        return QStringLiteral("Estimated throughput unknown until link rate is reported or transfer starts measuring.");
     }
 
-    static QString describeMode(BandMode mode, const AdapterCapabilities& cap) {
-        return evaluateBand(mode, cap, PeerCapabilities{true, cap.supports5GHz, cap.supports6GHz, cap.supportsP2p, true},
-                            cap.supportsP2p ? TransportKind::WifiDirectP2p : TransportKind::SecureLanTcp).explanation;
+    static TransferCompatibilityReport compareAndRecommend(
+        const AdapterCapabilities& local,
+        const PeerCapabilities& peer,
+        TransportKind selectedTransport,
+        BandMode requestedBand,
+        ReachabilityState lanReachability
+    ) {
+        TransferCompatibilityReport r;
+        r.activeBandLabel = local.routerLan.activeFrequencyMhz > 0
+            ? activeBandFromMhz(local.routerLan.activeFrequencyMhz)
+            : QStringLiteral("Unknown / not reported");
+        r.expectedPerformance = estimatePerformance(local, selectedTransport);
+
+        auto peerState = [&](CapabilityState s) { return peer.known ? stateText(s) : QStringLiteral("Unknown (not queried)"); };
+        r.rows = {
+            {QStringLiteral("2.4 GHz Wi-Fi HW/OS"), stateText(local.wifi.band24), peerState(peer.wifi.band24)},
+            {QStringLiteral("5 GHz Wi-Fi HW/OS"), stateText(local.wifi.band5), peerState(peer.wifi.band5)},
+            {QStringLiteral("6 GHz Wi-Fi HW/OS"), stateText(local.wifi.band6), peerState(peer.wifi.band6)},
+            {QStringLiteral("Wi-Fi Direct"), stateText(local.wifiDirect.available), peerState(peer.wifiDirectAvailable)},
+            {QStringLiteral("Router/LAN Path"), stateText(local.routerLan.available),
+             lanReachability == ReachabilityState::Reachable ? QStringLiteral("Reachable") :
+             lanReachability == ReachabilityState::ClientIsolationSuspected ? QStringLiteral("Blocked / isolation suspected") :
+             lanReachability == ReachabilityState::Unreachable ? QStringLiteral("Unreachable") : peerState(peer.routerLanAvailable)},
+            {QStringLiteral("Active Network Freq"), r.activeBandLabel,
+             peer.activeFrequencyMhz > 0 ? activeBandFromMhz(peer.activeFrequencyMhz) : QStringLiteral("Unknown")}
+        };
+
+        // Missing / limitation diagnostics
+        if (!local.iwAvailable) {
+            r.missingDiagnostics << QStringLiteral("`iw` command unavailable or restricted; hardware band capabilities are Unknown.");
+        }
+        if (local.wifi.band6 == CapabilityState::Supported && local.wifiDirect.band6 != CapabilityState::Supported) {
+            r.missingDiagnostics << QStringLiteral("Your device supports 6 GHz Wi-Fi, but 6 GHz Wi-Fi Direct is not exposed by this platform.");
+        } else if (local.wifi.band6 == CapabilityState::Unsupported) {
+            r.missingDiagnostics << QStringLiteral("Your device does not report 6 GHz Wi-Fi support.");
+        }
+        if (peer.known && peer.wifi.band6 != CapabilityState::Supported && requestedBand == BandMode::Band6GHz) {
+            r.missingDiagnostics << QStringLiteral("The other device does not confirm 6 GHz support; a dual/tri-band router may still bridge endpoints over LAN.");
+        }
+        if (lanReachability == ReachabilityState::ClientIsolationSuspected || lanReachability == ReachabilityState::Unreachable) {
+            r.missingDiagnostics << QStringLiteral("LAN peer is unreachable (check firewall, subnet, or router AP client isolation).");
+        } else if (local.routerLan.available == CapabilityState::Supported && lanReachability == ReachabilityState::NotTested) {
+            r.missingDiagnostics << QStringLiteral("Both devices have LAN interfaces, but DirectDrop has not verified local reachability yet.");
+        }
+
+        // Recommendation logic
+        if (lanReachability == ReachabilityState::Reachable) {
+            r.recommendedTransport = TransportKind::RouterLan;
+            r.recommendedBand = requestedBand;
+            r.recommendationHeadline = QStringLiteral("Recommended: Router/LAN (TLS 1.3) — peer reachable");
+            if (requestedBand != BandMode::AutoRecommended && local.routerLan.activeFrequencyMhz > 0) {
+                r.recommendationReason = QStringLiteral("Requested %1 through router; active OS link reports %2. Dual/tri-band routers can bridge different bands across endpoints.")
+                    .arg(bandLabel(requestedBand), r.activeBandLabel);
+            } else {
+                r.recommendationReason = QStringLiteral("Local network path verified; preserves TLS 1.3, SAS pairing, and SHA-256 verification.");
+            }
+        } else if (selectedTransport == TransportKind::WifiDirectP2p && local.wifiDirect.available == CapabilityState::Supported) {
+            r.recommendedTransport = TransportKind::WifiDirectP2p;
+            if (requestedBand == BandMode::Band6GHz) {
+                r.recommendedBand = BandMode::AutoRecommended;
+                r.recommendationHeadline = QStringLiteral("6 GHz Wi-Fi Direct unavailable — use Auto/5 GHz P2P or Router/LAN");
+                r.recommendationReason = QStringLiteral("Wi-Fi Direct does not expose 6 GHz here. Switch to Router/LAN on a 6 GHz AP or choose Auto/5 GHz.");
+            } else {
+                r.recommendedBand = requestedBand;
+                r.recommendationHeadline = QStringLiteral("Recommended: Wi-Fi Direct (%1)").arg(bandLabel(requestedBand));
+                r.recommendationReason = QStringLiteral("Direct peer-to-peer link without requiring a shared router.");
+            }
+        } else if (local.routerLan.available == CapabilityState::Supported) {
+            r.recommendedTransport = TransportKind::RouterLan;
+            r.recommendedBand = requestedBand;
+            r.recommendationHeadline = QStringLiteral("Recommended: Through Wi-Fi Router (LAN)");
+            r.recommendationReason = QStringLiteral("Wi-Fi Direct is unavailable or not selected; test LAN reachability or enter peer IP.");
+        } else {
+            r.recommendedTransport = TransportKind::RouterLan;
+            r.recommendedBand = BandMode::AutoRecommended;
+            r.recommendationHeadline = QStringLiteral("Auto mode — connect Wi-Fi or verify permissions");
+            r.recommendationReason = QStringLiteral("Neither Wi-Fi Direct nor an active LAN IP was confirmed.");
+        }
+        return r;
     }
 };
 

@@ -4,6 +4,7 @@
 #include "TlsServer.hpp"
 #include "AdaptiveWifiPolicy.hpp"
 #include "FileManagerWidget.hpp"
+#include "LearnMorePage.hpp"
 #include "LiquidBandSelector.hpp"
 #include "LiquidSidebar.hpp"
 
@@ -265,38 +266,49 @@ private slots:
         const QString iwAll = QStringLiteral(
             "Frequencies:\n * 2412 MHz [1]\n * 5180 MHz [36]\n * 5955 MHz [1]\n"
             "Supported interface modes:\n * P2P-client\n * P2P-GO\n#channels <= 2\n");
-        auto capAll = AdaptiveWifiPolicy::parseIwOutput(iwAll, QStringLiteral("freq: 5955"));
-        QVERIFY(capAll.supports24GHz && capAll.supports5GHz && capAll.supports6GHz && capAll.supportsP2p);
-        QCOMPARE(capAll.activeFrequencyMhz, 5955);
+        auto capAll = AdaptiveWifiPolicy::parseIwOutput(iwAll, QStringLiteral("freq: 5955\ntx bitrate: 1200.0 MBit/s"), true);
+        capAll.routerLan.available = CapabilityState::Supported;
+        QVERIFY(capAll.supports24GHz() && capAll.supports5GHz() && capAll.supports6GHz() && capAll.supportsP2p());
+        QCOMPARE(capAll.routerLan.activeFrequencyMhz, 5955);
+        QVERIFY(capAll.routerLan.linkRateMbps > 1000.0);
 
-        // Both peers 2.4/5/6 GHz over Secure LAN -> honors 6 GHz and verifies active 5955 MHz
-        PeerCapabilities peerAll{true, true, true, true, true};
-        auto dLan6 = AdaptiveWifiPolicy::evaluateBand(BandMode::Band6GHz, capAll, peerAll, TransportKind::SecureLanTcp);
-        QCOMPARE(dLan6.requestedState, CapabilityState::SupportedAndAvailable);
-        QVERIFY(dLan6.activeBandLabel.contains(QStringLiteral("6 GHz")));
+        // 1-2. 6 GHz HW supported, but 6 GHz Wi-Fi Direct NOT exposed -> separate layers & Learn More diagnostic
+        PeerCapabilities peerAll{QStringLiteral("Phone"), true, {CapabilityState::Supported, CapabilityState::Supported, CapabilityState::Supported}, CapabilityState::Supported, CapabilityState::Supported, 5955};
+        auto repP2p6 = AdaptiveWifiPolicy::compareAndRecommend(capAll, peerAll, TransportKind::WifiDirectP2p, BandMode::Band6GHz, ReachabilityState::NotTested);
+        QCOMPARE(capAll.wifi.band6, CapabilityState::Supported);
+        QCOMPARE(capAll.wifiDirect.band6, CapabilityState::Unsupported);
+        QVERIFY(repP2p6.recommendationHeadline.contains(QStringLiteral("unavailable")));
+        QVERIFY(repP2p6.missingDiagnostics.join('\n').contains(QStringLiteral("6 GHz Wi-Fi Direct")));
 
-        // 6 GHz adapter over Wi-Fi Direct where NM D-Bus does not expose band control -> honest limitation
-        auto dP2p6 = AdaptiveWifiPolicy::evaluateBand(BandMode::Band6GHz, capAll, peerAll, TransportKind::WifiDirectP2p);
-        QCOMPARE(dP2p6.requestedState, CapabilityState::SupportedButUnavailable);
-        QVERIFY(!dP2p6.canHonorDirectly);
-        QCOMPARE(dP2p6.requestedMode, BandMode::Band6GHz); // preference preserved
+        // 3. Router/LAN bridges different endpoint bands (6 GHz local + 5 GHz peer) -> still Recommended & Reachable
+        PeerCapabilities peerDual{QStringLiteral("Laptop"), true, {CapabilityState::Supported, CapabilityState::Supported, CapabilityState::Unsupported}, CapabilityState::Supported, CapabilityState::Supported, 5180};
+        auto repLanDiff = AdaptiveWifiPolicy::compareAndRecommend(capAll, peerDual, TransportKind::RouterLan, BandMode::Band6GHz, ReachabilityState::Reachable);
+        QCOMPARE(repLanDiff.recommendedTransport, TransportKind::RouterLan);
+        QVERIFY(repLanDiff.recommendationReason.contains(QStringLiteral("bridge different bands")));
+        QVERIFY(repLanDiff.expectedPerformance.contains(QStringLiteral("1200 Mbps")));
 
-        // Asymmetric: local 6 GHz, peer 2.4/5 only
-        PeerCapabilities peerDual{true, true, false, true, true};
-        auto dAsym = AdaptiveWifiPolicy::evaluateBand(BandMode::Band6GHz, capAll, peerDual, TransportKind::SecureLanTcp);
-        QCOMPARE(dAsym.requestedState, CapabilityState::SupportedButUnavailable);
-        auto dAuto = AdaptiveWifiPolicy::evaluateBand(BandMode::AutoRecommended, capAll, peerDual, TransportKind::SecureLanTcp);
-        QCOMPARE(dAuto.effectiveTarget, BandMode::Band5GHz);
+        // 4. Missing `iw` -> Unknown (never conflated with Unsupported)
+        auto capNoIw = AdaptiveWifiPolicy::parseIwOutput(QString(), QString(), false);
+        QCOMPARE(capNoIw.wifi.band24, CapabilityState::Unknown);
+        QCOMPARE(capNoIw.wifi.band5, CapabilityState::Unknown);
+        QCOMPARE(capNoIw.wifi.band6, CapabilityState::Unknown);
+        QCOMPARE(capNoIw.wifiDirect.available, CapabilityState::Unknown);
 
-        // 2.4 GHz-only peer
-        PeerCapabilities peer24{true, false, false, false, true};
-        auto dAuto24 = AdaptiveWifiPolicy::evaluateBand(BandMode::AutoRecommended, capAll, peer24, TransportKind::SecureLanTcp);
-        QCOMPARE(dAuto24.effectiveTarget, BandMode::Band24GHz);
+        // 5. Unknown peer capability + Client Isolation -> explicit diagnostic
+        PeerCapabilities peerUnknown;
+        auto repIso = AdaptiveWifiPolicy::compareAndRecommend(capAll, peerUnknown, TransportKind::RouterLan, BandMode::Band5GHz, ReachabilityState::ClientIsolationSuspected);
+        QVERIFY(repIso.missingDiagnostics.join('\n').contains(QStringLiteral("client isolation")));
 
-        // Missing/unknown active frequency
-        auto capNoLink = AdaptiveWifiPolicy::parseIwOutput(iwAll, QString());
-        auto dUnknown = AdaptiveWifiPolicy::evaluateBand(BandMode::Band5GHz, capNoLink, peerDual, TransportKind::SecureLanTcp);
-        QCOMPARE(dUnknown.activeBandLabel, QStringLiteral("Band information unavailable"));
+        // 6. Selected 5 GHz while active network is 2.4 GHz -> never fakes 5 GHz as active
+        auto cap24Active = AdaptiveWifiPolicy::parseIwOutput(iwAll, QStringLiteral("freq: 2412"), true);
+        cap24Active.routerLan.available = CapabilityState::Supported;
+        auto repMismatch = AdaptiveWifiPolicy::compareAndRecommend(cap24Active, peerDual, TransportKind::RouterLan, BandMode::Band5GHz, ReachabilityState::Reachable);
+        QVERIFY(repMismatch.activeBandLabel.contains(QStringLiteral("2.4 GHz")));
+        QVERIFY(repMismatch.recommendationReason.contains(QStringLiteral("2.4 GHz")));
+
+        // 7. LearnMorePage updates dynamically from detected gaps
+        LearnMorePage learnMore;
+        learnMore.updateFromReport(capAll, repP2p6);
     }
 };
 

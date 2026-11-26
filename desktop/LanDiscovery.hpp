@@ -1,13 +1,15 @@
 #pragma once
 
+#include "AdaptiveWifiPolicy.hpp"
+
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
 #include <QObject>
+#include <QTcpSocket>
 #include <QTimer>
 #include <QUdpSocket>
-#include <QtGlobal>
 
 namespace directdrop {
 
@@ -16,12 +18,12 @@ struct LanPeerInfo {
     QString ip;
     quint16 tlsPort = 0;
     QString bands;
-    qint64 lastSeenMs = 0;
+    PeerCapabilities caps;
 };
 
 /**
- * Lightweight local-network peer discovery over UDP (port 47292).
- * Broadcasts only non-sensitive display name, TLS port, and supported band summary
+ * Local-network UDP peer discovery (port 47292) + TCP reachability probe.
+ * Exchanges only non-sensitive display name, TLS port, and capability states
  * (never IMEI, serial numbers, or permanent MAC addresses).
  */
 class LanDiscoveryService : public QObject {
@@ -39,19 +41,29 @@ public:
         connect(m_beaconTimer, &QTimer::timeout, this, &LanDiscoveryService::sendBeacon);
     }
 
-    void start(const QString& deviceName, quint16 tlsPort, const QString& bandSummary) {
+    void start(const QString& deviceName, quint16 tlsPort, const AdapterCapabilities& localCap) {
         m_deviceName = deviceName;
         m_tlsPort = tlsPort;
-        m_bandSummary = bandSummary;
+        m_localCap = localCap;
         if (!m_beaconTimer->isActive()) m_beaconTimer->start();
         sendBeacon();
     }
 
-    void stop() {
-        m_beaconTimer->stop();
-    }
-
+    void stop() { m_beaconTimer->stop(); }
     QList<LanPeerInfo> peers() const { return m_peers.values(); }
+
+    static ReachabilityState probeTcpReachability(const QString& ip, quint16 port, int timeoutMs = 1500) {
+        QTcpSocket sock;
+        sock.connectToHost(ip, port);
+        if (sock.waitForConnected(timeoutMs)) {
+            sock.disconnectFromHost();
+            return ReachabilityState::Reachable;
+        }
+        if (sock.error() == QAbstractSocket::SocketTimeoutError) {
+            return ReachabilityState::ClientIsolationSuspected;
+        }
+        return ReachabilityState::Unreachable;
+    }
 
 signals:
     void peersUpdated(const QList<LanPeerInfo>& peers);
@@ -61,10 +73,15 @@ private slots:
         if (m_tlsPort == 0) return;
         QJsonObject obj;
         obj[QStringLiteral("app")] = QStringLiteral("DirectDrop");
-        obj[QStringLiteral("proto")] = 1;
+        obj[QStringLiteral("proto")] = 2;
         obj[QStringLiteral("name")] = m_deviceName;
         obj[QStringLiteral("port")] = static_cast<int>(m_tlsPort);
-        obj[QStringLiteral("bands")] = m_bandSummary;
+        obj[QStringLiteral("bands")] = m_localCap.summary;
+        obj[QStringLiteral("w24")] = static_cast<int>(m_localCap.wifi.band24);
+        obj[QStringLiteral("w5")] = static_cast<int>(m_localCap.wifi.band5);
+        obj[QStringLiteral("w6")] = static_cast<int>(m_localCap.wifi.band6);
+        obj[QStringLiteral("p2p")] = static_cast<int>(m_localCap.wifiDirect.available);
+        obj[QStringLiteral("freq")] = m_localCap.routerLan.activeFrequencyMhz;
         QByteArray datagram = QJsonDocument(obj).toJson(QJsonDocument::Compact);
         m_sock->writeDatagram(datagram, QHostAddress::Broadcast, kDiscoveryPort);
     }
@@ -75,7 +92,7 @@ private slots:
             data.resize(static_cast<int>(m_sock->pendingDatagramSize()));
             QHostAddress sender;
             m_sock->readDatagram(data.data(), data.size(), &sender);
-            if (data.size() > 1024) continue;
+            if (data.size() > 1536) continue;
             QJsonDocument doc = QJsonDocument::fromJson(data);
             if (!doc.isObject()) continue;
             QJsonObject obj = doc.object();
@@ -85,13 +102,26 @@ private slots:
 
             QString ip = sender.toString();
             if (ip.startsWith(QStringLiteral("::ffff:"))) ip = ip.mid(7);
-            if (ip.isEmpty() || ip == QStringLiteral("127.0.0.1")) continue;
+            if (ip.isEmpty() || ip == QStringLiteral("127.0.0.1") ||
+                m_localCap.routerLan.lanAddresses.contains(ip)) continue;
+
+            auto toCap = [](int v) -> CapabilityState {
+                return (v >= 0 && v <= 3) ? static_cast<CapabilityState>(v) : CapabilityState::Unknown;
+            };
 
             LanPeerInfo info;
             info.deviceName = obj.value(QStringLiteral("name")).toString().left(64);
             info.ip = ip;
             info.tlsPort = static_cast<quint16>(port);
-            info.bands = obj.value(QStringLiteral("bands")).toString().left(48);
+            info.bands = obj.value(QStringLiteral("bands")).toString().left(64);
+            info.caps.name = info.deviceName;
+            info.caps.known = obj.contains(QStringLiteral("w24"));
+            info.caps.wifi.band24 = toCap(obj.value(QStringLiteral("w24")).toInt(3));
+            info.caps.wifi.band5 = toCap(obj.value(QStringLiteral("w5")).toInt(3));
+            info.caps.wifi.band6 = toCap(obj.value(QStringLiteral("w6")).toInt(3));
+            info.caps.wifiDirectAvailable = toCap(obj.value(QStringLiteral("p2p")).toInt(3));
+            info.caps.routerLanAvailable = CapabilityState::Supported;
+            info.caps.activeFrequencyMhz = obj.value(QStringLiteral("freq")).toInt(0);
             m_peers.insert(ip, info);
             emit peersUpdated(m_peers.values());
         }
@@ -102,7 +132,7 @@ private:
     QTimer* m_beaconTimer = nullptr;
     QString m_deviceName;
     quint16 m_tlsPort = 0;
-    QString m_bandSummary;
+    AdapterCapabilities m_localCap;
     QMap<QString, LanPeerInfo> m_peers;
 };
 

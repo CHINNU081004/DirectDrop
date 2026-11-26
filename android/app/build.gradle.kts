@@ -10,8 +10,8 @@ android {
         applicationId = "com.directdrop.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 23
-        versionName = "1.4.0"
+        versionCode = 24
+        versionName = "1.4.1"
     }
 
     buildTypes {

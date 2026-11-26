@@ -1,6 +1,15 @@
-# DirectDrop v1.4.0
+# DirectDrop v1.4.1
 
-High-performance, verified, native **Wi-Fi Direct** & **Secure LAN (TLS 1.3)** file-transfer system between Android (API 29–36) and Linux Desktop (C++20 + Qt 6).
+High-performance, verified, native **Wi-Fi Direct** & **Through Wi-Fi Router (Secure LAN TLS 1.3)** file-transfer system between Android (API 29–36) and Linux Desktop (C++20 + Qt 6).
+
+## What's New in v1.4.1
+- **Three-Layer Capability Model** (`desktop/AdaptiveWifiPolicy.hpp`, `android/.../BandCapabilityManager.kt`):
+  - Strictly separates **Wi-Fi Hardware/OS Support**, **Wi-Fi Direct Group-Band Support**, and **Router/LAN Transfer Capability** (`Supported`, `Unsupported`, `PermissionRequired`, `Unknown`). Missing `iw` or missing permissions report `Unknown` / `PermissionRequired` rather than false `Unsupported`.
+- **Transport Selector & Two-Device Compatibility Comparison**:
+  - Explicit **Direct (Wi-Fi Direct)** vs **Through Wi-Fi Router (LAN)** transport selector paired with live **You vs Peer** capability comparison, **Expected Performance** (link rate + conservative TCP range vs unknown), and real TCP reachability checks (`Verify LAN`).
+  - Correctly handles dual/tri-band routers bridging endpoints on different bands (e.g. 6 GHz + 5 GHz) without falsely rejecting valid LAN paths.
+- **Dynamic In-App "Learn More" Page** (`desktop/LearnMorePage.hpp`, `android/.../learnMorePage`):
+  - Explains 2.4/5/6 GHz trade-offs, why 6 GHz Wi-Fi HW can work while Wi-Fi Direct does not, peer compatibility, router effects, and device-specific missing capabilities.
 
 ## What's New in v1.4.0
 - **Four-Option Liquid-Glass Band Selector (`Auto | 2.4 GHz | 5 GHz | 6 GHz`)**:
@@ -44,7 +53,7 @@ High-performance, verified, native **Wi-Fi Direct** & **Secure LAN (TLS 1.3)** f
 cmake -S desktop -B desktop/build -G Ninja
 cmake --build desktop/build --parallel
 ctest --test-dir desktop/build --output-on-failure
-sudo apt install "./releases/directdrop_1.4.0_amd64.deb"
+sudo apt install "./releases/directdrop_1.4.1_amd64.deb"
 ```
 
 ### Android
@@ -55,8 +64,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Release Artifacts (`releases/`)
-- `directdrop_1.4.0_amd64.deb` (earlier versions preserved)
-- `directdrop-1.4.0-debug.apk` (earlier versions preserved)
+- `directdrop_1.4.1_amd64.deb` (earlier versions preserved)
+- `directdrop-1.4.1-debug.apk` (earlier versions preserved)
 - `SHA256SUMS.txt`
 
 ## Known Limitations
