@@ -150,9 +150,7 @@ class LiquidBandSelectorView @JvmOverloads constructor(
         )
 
         val tr = thumbRect.height() / 2f
-        val hlX = if (isDragging) pointerX.coerceIn(thumbRect.left, thumbRect.right) else thumbRect.centerX()
-        val hlY = if (isDragging) pointerY.coerceIn(thumbRect.top, thumbRect.bottom) else thumbRect.top + thumbRect.height() * 0.28f
-        TransparentGlassPainter.drawGlassLens(canvas, thumbRect, tr, hlX, hlY, 1f)
+        TransparentGlassPainter.drawGlassLens(canvas, thumbRect, tr, 0f, 0f, 1f)
 
         textPaint.textSize = 13f * resources.displayMetrics.density
         val textY = trackRect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f

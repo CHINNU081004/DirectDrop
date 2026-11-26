@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.provider.Settings
@@ -43,70 +42,66 @@ object MotionPrefs {
 
 /**
  * Draws a predominantly transparent, colorless dimensional glass lens
- * with a subtle neutral interior, depth shadow, directional rim lighting,
- * and a small specular highlight that tracks pointer/touch coordinates.
+ * with a subtle neutral interior, depth shadow, and a stable, restrained
+ * edge reflection (no moving interior hotspot).
  */
 object TransparentGlassPainter {
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sheenPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 2.2f
+        strokeWidth = 1.8f
     }
-    private val glintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     fun drawGlassLens(
         canvas: Canvas,
         rect: RectF,
         cornerRadius: Float,
-        lightX: Float,
-        lightY: Float,
+        @Suppress("UNUSED_PARAMETER") lightX: Float = 0f,
+        @Suppress("UNUSED_PARAMETER") lightY: Float = 0f,
         alphaScale: Float = 1f
     ) {
         val a = alphaScale.coerceIn(0f, 1f)
         if (a <= 0.01f) return
 
         // 1. Subtle depth shadow underneath
-        shadowPaint.color = Color.argb((42 * a).toInt(), 0, 0, 0)
+        shadowPaint.color = Color.argb((38 * a).toInt(), 0, 0, 0)
         canvas.drawRoundRect(
-            rect.left, rect.top + 3f, rect.right, rect.bottom + 4f,
+            rect.left, rect.top + 2.5f, rect.right, rect.bottom + 3.5f,
             cornerRadius, cornerRadius, shadowPaint
         )
 
         // 2. Predominantly transparent neutral glass interior (background stays visible)
         fillPaint.shader = LinearGradient(
             rect.left, rect.top, rect.right, rect.bottom,
-            Color.argb((34 * a).toInt(), 255, 255, 255),
-            Color.argb((14 * a).toInt(), 255, 255, 255),
+            Color.argb((26 * a).toInt(), 255, 255, 255),
+            Color.argb((10 * a).toInt(), 255, 255, 255),
             Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(rect, cornerRadius, cornerRadius, fillPaint)
 
-        // 3. Directional luminous glass rim
+        // 3. Subtle fixed top-edge inner sheen (no bright moving spot)
+        sheenPaint.shader = LinearGradient(
+            rect.left, rect.top, rect.left, rect.top + rect.height() * 0.45f,
+            Color.argb((32 * a).toInt(), 255, 255, 255),
+            Color.TRANSPARENT,
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, sheenPaint)
+
+        // 4. Restrained, stable directional rim highlight
         rimPaint.shader = LinearGradient(
-            lightX - rect.width() * 0.4f, lightY - rect.height() * 0.4f,
-            rect.right, rect.bottom,
+            rect.left, rect.top, rect.right, rect.bottom,
             intArrayOf(
-                Color.argb((210 * a).toInt(), 255, 255, 255),
-                Color.argb((70 * a).toInt(), 255, 255, 255),
-                Color.argb((130 * a).toInt(), 255, 255, 255)
+                Color.argb((150 * a).toInt(), 255, 255, 255),
+                Color.argb((52 * a).toInt(), 255, 255, 255),
+                Color.argb((100 * a).toInt(), 255, 255, 255)
             ),
-            floatArrayOf(0f, 0.55f, 1f),
+            floatArrayOf(0f, 0.5f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(rect, cornerRadius, cornerRadius, rimPaint)
-
-        // 4. Small, natural specular glint following interaction light
-        val glintR = maxOf(16f, minOf(rect.width(), rect.height()) * 0.55f)
-        val gx = lightX.coerceIn(rect.left + 8f, rect.right - 8f)
-        val gy = (rect.top + rect.height() * 0.28f).coerceIn(rect.top + 4f, rect.bottom - 4f)
-        glintPaint.shader = RadialGradient(
-            gx, gy, glintR,
-            intArrayOf(Color.argb((125 * a).toInt(), 255, 255, 255), Color.TRANSPARENT),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, glintPaint)
     }
 }
 

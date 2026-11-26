@@ -5,7 +5,6 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointF>
-#include <QRadialGradient>
 #include <QRectF>
 #include <QtMath>
 
@@ -30,49 +29,45 @@ struct Spring1D {
  * Renders a predominantly transparent, colorless dimensional glass lens:
  * - Soft depth shadow underneath
  * - Transparent neutral glass interior (background remains visible)
- * - Directional luminous rim highlight
- * - Small, natural specular glint following the interaction light position
+ * - Subtle fixed top-edge sheen (no moving interior hotspot)
+ * - Restrained luminous rim highlight
  */
 inline void drawTransparentGlassLens(
     QPainter& p,
     const QRectF& rect,
     double radius,
-    const QPointF& lightPos,
+    const QPointF& /*lightPos*/ = QPointF(),
     double alphaScale = 1.0
 ) {
     double a = qBound(0.0, alphaScale, 1.0);
     if (a <= 0.01) return;
 
     // 1. Subtle depth shadow
-    p.setBrush(QColor(0, 0, 0, static_cast<int>(45 * a)));
+    p.setBrush(QColor(0, 0, 0, static_cast<int>(38 * a)));
     p.setPen(Qt::NoPen);
     p.drawRoundedRect(rect.adjusted(0, 2.0, 0, 3.0), radius, radius);
 
     // 2. Transparent neutral interior
     QLinearGradient fillGrad(rect.topLeft(), rect.bottomRight());
-    fillGrad.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(34 * a)));
-    fillGrad.setColorAt(1.0, QColor(255, 255, 255, static_cast<int>(12 * a)));
+    fillGrad.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(26 * a)));
+    fillGrad.setColorAt(1.0, QColor(255, 255, 255, static_cast<int>(10 * a)));
     p.setBrush(fillGrad);
     p.drawRoundedRect(rect, radius, radius);
 
-    // 3. Directional luminous rim
-    QLinearGradient rimGrad(lightPos - QPointF(rect.width() * 0.35, rect.height() * 0.35), rect.bottomRight());
-    rimGrad.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(210 * a)));
-    rimGrad.setColorAt(0.55, QColor(255, 255, 255, static_cast<int>(68 * a)));
-    rimGrad.setColorAt(1.0, QColor(255, 255, 255, static_cast<int>(135 * a)));
-    p.setBrush(Qt::NoBrush);
-    p.setPen(QPen(QBrush(rimGrad), 1.4));
+    // 3. Subtle fixed top-edge inner sheen (no moving radial spot)
+    QLinearGradient sheenGrad(rect.topLeft(), QPointF(rect.left(), rect.top() + rect.height() * 0.45));
+    sheenGrad.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(30 * a)));
+    sheenGrad.setColorAt(1.0, Qt::transparent);
+    p.setBrush(sheenGrad);
     p.drawRoundedRect(rect, radius, radius);
 
-    // 4. Small natural specular glint
-    double gx = qBound(rect.left() + 8.0, lightPos.x(), rect.right() - 8.0);
-    double gy = qBound(rect.top() + 4.0, rect.top() + rect.height() * 0.28, rect.bottom() - 4.0);
-    double gr = qMax(14.0, qMin(rect.width(), rect.height()) * 0.55);
-    QRadialGradient glint(QPointF(gx, gy), gr);
-    glint.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(115 * a)));
-    glint.setColorAt(1.0, Qt::transparent);
-    p.setBrush(glint);
-    p.setPen(Qt::NoPen);
+    // 4. Restrained, stable directional rim highlight
+    QLinearGradient rimGrad(rect.topLeft(), rect.bottomRight());
+    rimGrad.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(150 * a)));
+    rimGrad.setColorAt(0.5, QColor(255, 255, 255, static_cast<int>(52 * a)));
+    rimGrad.setColorAt(1.0, QColor(255, 255, 255, static_cast<int>(100 * a)));
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QBrush(rimGrad), 1.3));
     p.drawRoundedRect(rect, radius, radius);
 }
 
@@ -123,10 +118,10 @@ struct LiquidRipple {
 
         // Transparent interior — caustic glass band + crisp rim
         p.setBrush(Qt::NoBrush);
-        p.setPen(QPen(QColor(255, 255, 255, qBound(0, static_cast<int>(45 * fade), 255)), 4.0));
+        p.setPen(QPen(QColor(255, 255, 255, qBound(0, static_cast<int>(42 * fade), 255)), 3.5));
         p.drawPath(path);
 
-        p.setPen(QPen(QColor(255, 255, 255, qBound(0, static_cast<int>(185 * fade), 255)), 1.5));
+        p.setPen(QPen(QColor(255, 255, 255, qBound(0, static_cast<int>(165 * fade), 255)), 1.4));
         p.drawPath(path);
     }
 };

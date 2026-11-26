@@ -22,6 +22,7 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override = default;
     void setPageIndex(int idx);
+    QWidget* sidebarWidget() const { return m_sidebar; }
 
 private slots:
     void onStartScan();

@@ -86,8 +86,7 @@ protected:
 
         double inset = m_press.value * 2.5;
         QRectF r = rect().adjusted(2 + inset, 2 + inset, -2 - inset, -2 - inset);
-        QPointF lightPos = m_hovered ? m_pointer : QPointF(r.center().x(), r.top() + r.height() * 0.25);
-        drawTransparentGlassLens(p, r, 16.0, lightPos, m_selected ? 1.0 : (m_hovered ? 0.85 : 0.60));
+        drawTransparentGlassLens(p, r, 16.0, QPointF(), m_selected ? 1.0 : (m_hovered ? 0.85 : 0.60));
 
         m_ripple.draw(p);
 

@@ -2,6 +2,7 @@
 #include "Protocol.hpp"
 #include "SafeFileWriter.hpp"
 #include "TlsServer.hpp"
+#include "LiquidSidebar.hpp"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -154,6 +155,40 @@ private slots:
         QString receivedFile = tmp.path() + QStringLiteral("/DCIM/Camera/test.bin");
         QVERIFY(QFile::exists(receivedFile));
         QCOMPARE(QFileInfo(receivedFile).size(), fileData.size());
+    }
+
+    void testSidebarHoverLifecycle() {
+        LiquidSidebar sidebar;
+        sidebar.resize(210, 500);
+        sidebar.show();
+        QTest::qWait(50);
+
+        QCOMPARE(sidebar.activeIndex(), 0);
+        QCOMPARE(sidebar.hoveredIndex(), -1);
+
+        // Hover over Connect Device (index 2) without changing activeIndex
+        sidebar.setHoveredIndex(2, 10.0);
+        QCOMPARE(sidebar.hoveredIndex(), 2);
+        QCOMPARE(sidebar.activeIndex(), 0);
+        QTest::qWait(80);
+        QVERIFY(sidebar.lensOverlay()->currentAlphaMilli() > 100);
+
+        // Move to Transfers (index 3)
+        sidebar.setHoveredIndex(3, 8.0);
+        QCOMPARE(sidebar.hoveredIndex(), 3);
+        QCOMPARE(sidebar.activeIndex(), 0);
+
+        // Programmatic navigation to Files (index 1)
+        sidebar.setActiveIndex(1);
+        QCOMPARE(sidebar.activeIndex(), 1);
+        QCOMPARE(sidebar.hoveredIndex(), 3);
+
+        // Leave sidebar: hover clears and lens fades out, activeIndex stays 1
+        sidebar.setHoveredIndex(-1);
+        QCOMPARE(sidebar.hoveredIndex(), -1);
+        QCOMPARE(sidebar.activeIndex(), 1);
+        QTest::qWait(300);
+        QVERIFY(sidebar.lensOverlay()->currentAlphaMilli() < 50);
     }
 };
 

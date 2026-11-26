@@ -101,9 +101,7 @@ class LiquidDeviceCardView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         rect.set(2f, 2f, width - 2f, height - 2f)
         val r = 44f
-        val hlX = if (pointerInside) pointerX else rect.centerX()
-        val hlY = if (pointerInside) pointerY else rect.top + rect.height() * 0.25f
-        TransparentGlassPainter.drawGlassLens(canvas, rect, r, hlX, hlY, if (isSelectedCard) 1f else 0.72f)
+        TransparentGlassPainter.drawGlassLens(canvas, rect, r, 0f, 0f, if (isSelectedCard) 1f else 0.72f)
 
         ripple.draw(canvas)
 

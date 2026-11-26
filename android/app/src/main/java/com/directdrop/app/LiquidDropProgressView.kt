@@ -83,6 +83,6 @@ class LiquidDropProgressView @JvmOverloads constructor(
         val dropX = trackRect.left + (trackRect.width() - r * 2f) * frac + r
         val dropY = trackRect.centerY()
         val dropRect = RectF(dropX - dropR, dropY - dropR * 0.88f, dropX + dropR, dropY + dropR * 0.88f)
-        TransparentGlassPainter.drawGlassLens(canvas, dropRect, dropR * 0.88f, dropX - dropR * 0.25f, dropY - dropR * 0.3f, 1f)
+        TransparentGlassPainter.drawGlassLens(canvas, dropRect, dropR * 0.88f, 0f, 0f, 1f)
     }
 }
