@@ -1,8 +1,8 @@
 #pragma once
 
+#include "LiquidGlassPhysics.hpp"
 #include <QPainter>
 #include <QProgressBar>
-#include <QRadialGradient>
 #include <QTimer>
 #include <QtMath>
 
@@ -49,32 +49,26 @@ protected:
         p.setPen(QPen(QColor(255, 255, 255, 90), 1.2));
         p.drawRoundedRect(r, r.height() / 2.0, r.height() / 2.0);
 
-        // Liquid fill stream
+        // Restrained transparent glass fill stream
         if (frac > 0.001) {
             double fillW = qMax(r.height(), r.width() * frac);
             QRectF fillRect(r.left(), r.top(), fillW, r.height());
             QLinearGradient grad(fillRect.topLeft(), fillRect.topRight());
-            grad.setColorAt(0.0, QColor(41, 98, 255, 215));
-            grad.setColorAt(1.0, QColor(0, 229, 255, 245));
+            grad.setColorAt(0.0, QColor(255, 255, 255, 28));
+            grad.setColorAt(1.0, QColor(255, 255, 255, 72));
             p.setBrush(grad);
-            p.setPen(Qt::NoPen);
+            p.setPen(QPen(QColor(255, 255, 255, 120), 1.1));
             p.drawRoundedRect(fillRect, r.height() / 2.0, r.height() / 2.0);
         }
 
-        // Traveling water droplet with subtle fluid wobble
+        // Transparent water droplet lens at leading edge
         double dropX = r.left() + (r.width() - r.height()) * frac + r.height() / 2.0;
         double dropY = r.center().y();
-        double wobble = 1.0 + 0.06 * qSin(m_phase);
+        double wobble = 1.0 + 0.05 * qSin(m_phase);
         double dropRx = r.height() * 0.72 * wobble;
         double dropRy = r.height() * 0.72 / wobble;
-
-        QRadialGradient dropGrad(dropX - dropRx * 0.25, dropY - dropRy * 0.25, dropRx * 1.25);
-        dropGrad.setColorAt(0.0, QColor(255, 255, 255, 250));
-        dropGrad.setColorAt(0.38, QColor(0, 229, 255, 235));
-        dropGrad.setColorAt(1.0, QColor(41, 98, 255, 215));
-        p.setBrush(dropGrad);
-        p.setPen(QPen(QColor(255, 255, 255, 200), 1.2));
-        p.drawEllipse(QPointF(dropX, dropY), dropRx, dropRy);
+        QRectF dropRect(dropX - dropRx, dropY - dropRy * 0.88, dropRx * 2.0, dropRy * 1.76);
+        drawTransparentGlassLens(p, dropRect, dropRy * 0.88, QPointF(dropX - dropRx * 0.25, dropY - dropRy * 0.3), 1.0);
 
         // Percentage label
         p.setPen(QColor(255, 255, 255));

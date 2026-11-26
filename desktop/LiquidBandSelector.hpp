@@ -92,20 +92,9 @@ protected:
                      qMin(track.right() - 2.0, right) - qMax(track.left() + 2.0, left),
                      track.height() - 4.0 - compY * 2.0);
 
-        QLinearGradient tGrad(thumb.topLeft(), thumb.bottomRight());
-        tGrad.setColorAt(0.0, QColor(41, 98, 255, 195));
-        tGrad.setColorAt(1.0, QColor(0, 229, 255, 215));
-        p.setBrush(tGrad);
-        p.setPen(QPen(QColor(255, 255, 255, 150), 1.2));
-        p.drawRoundedRect(thumb, thumb.height() / 2.0, thumb.height() / 2.0);
-
         double hlX = m_dragging ? qBound(thumb.left(), m_pointer.x(), thumb.right()) : thumb.center().x();
-        QRadialGradient spec(QPointF(hlX, thumb.top() + thumb.height() * 0.25), thumb.width() * 0.6);
-        spec.setColorAt(0.0, QColor(255, 255, 255, 130));
-        spec.setColorAt(1.0, Qt::transparent);
-        p.setBrush(spec);
-        p.setPen(Qt::NoPen);
-        p.drawRoundedRect(thumb, thumb.height() / 2.0, thumb.height() / 2.0);
+        double hlY = m_dragging ? qBound(thumb.top(), m_pointer.y(), thumb.bottom()) : thumb.top() + thumb.height() * 0.28;
+        drawTransparentGlassLens(p, thumb, thumb.height() / 2.0, QPointF(hlX, hlY), 1.0);
 
         p.setFont(QFont(font().family(), 9, QFont::Bold));
         for (int i = 0; i < 3; ++i) {

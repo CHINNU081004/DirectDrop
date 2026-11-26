@@ -101,23 +101,16 @@ class LiquidDeviceCardView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         rect.set(2f, 2f, width - 2f, height - 2f)
         val r = 44f
-        bgPaint.color = if (isSelectedCard) Color.argb(65, 0, 229, 255) else Color.argb(30, 255, 255, 255)
-        canvas.drawRoundRect(rect, r, r, bgPaint)
-
-        if (pointerInside) {
-            highlightPaint.shader = RadialGradient(
-                pointerX, pointerY, maxOf(width, height) * 0.6f,
-                intArrayOf(Color.argb(75, 255, 255, 255), Color.TRANSPARENT),
-                floatArrayOf(0f, 1f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawRoundRect(rect, r, r, highlightPaint)
-        }
+        val hlX = if (pointerInside) pointerX else rect.centerX()
+        val hlY = if (pointerInside) pointerY else rect.top + rect.height() * 0.25f
+        TransparentGlassPainter.drawGlassLens(canvas, rect, r, hlX, hlY, if (isSelectedCard) 1f else 0.72f)
 
         ripple.draw(canvas)
 
-        borderPaint.color = if (isSelectedCard) Color.argb(200, 0, 229, 255) else Color.argb(85, 255, 255, 255)
-        canvas.drawRoundRect(rect, r, r, borderPaint)
+        if (isSelectedCard) {
+            borderPaint.color = Color.argb(215, 255, 255, 255)
+            canvas.drawRoundRect(rect, r, r, borderPaint)
+        }
         super.onDraw(canvas)
     }
 }

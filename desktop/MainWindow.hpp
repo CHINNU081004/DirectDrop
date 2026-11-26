@@ -21,7 +21,7 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override = default;
-    void setPageIndex(int idx) { if (m_pages) m_pages->setCurrentIndex(idx); }
+    void setPageIndex(int idx);
 
 private slots:
     void onStartScan();
@@ -48,6 +48,7 @@ private:
     TlsReceiverServer* m_server = nullptr;
 
     QStackedWidget* m_pages = nullptr;
+    QWidget* m_sidebar = nullptr;
 
     QPushButton* m_btnTabShare = nullptr;
     QPushButton* m_btnTabHistory = nullptr;

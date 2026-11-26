@@ -24,6 +24,7 @@ add_executable(directdrop_desktop
     LiquidGlassPhysics.hpp
     LiquidBandSelector.hpp
     LiquidDeviceCard.hpp
+    LiquidSidebar.hpp
     RadarScanWidget.hpp
     TlsClient.hpp
     WifiP2pBackend.hpp

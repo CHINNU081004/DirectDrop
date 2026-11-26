@@ -2,11 +2,13 @@
 #include "LiquidBandSelector.hpp"
 #include "LiquidDeviceCard.hpp"
 #include "LiquidDropProgressBar.hpp"
+#include "LiquidSidebar.hpp"
 #include "RadarScanWidget.hpp"
 #include "TlsClient.hpp"
 
 #include <QDesktopServices>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGroupBox>
@@ -17,41 +19,54 @@
 #include <QStorageInfo>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <algorithm>
 
 namespace directdrop {
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("DirectDrop — Wireless File Transfer"));
     setWindowIcon(QIcon(QStringLiteral("/usr/share/icons/hicolor/scalable/apps/directdrop.svg")));
-    setMinimumSize(560, 480);
-    resize(880, 680);
+    setMinimumSize(780, 560);
+    resize(1040, 680);
     setStyleSheet(QStringLiteral(
-        "QWidget#centralGlass, QScrollArea, QStackedWidget, QWidget#pageSetup, QWidget#pageTransfer, QWidget#pageConnect { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #060B1E, stop:0.5 #0D1B42, stop:1 #09132E); border: none; }"
-        "QGroupBox { background: rgba(255, 255, 255, 0.10); border: 1.5px solid rgba(255, 255, 255, 0.28); border-radius: 20px; margin-top: 14px; padding: 14px; color: #E3F2FD; font-weight: 600; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 18px; padding: 0 8px; color: #82B1FF; font-weight: 700; }"
-        "QLabel { color: #F0F6FF; background: transparent; }"
-        "QPushButton { background: rgba(255, 255, 255, 0.14); border: 1.2px solid rgba(255, 255, 255, 0.38); border-radius: 19px; min-height: 36px; padding: 2px 20px; color: #FFFFFF; font-weight: 600; }"
-        "QPushButton:hover { background: rgba(0, 229, 255, 0.32); border-color: rgba(255, 255, 255, 0.65); }"
-        "QPushButton:pressed { background: rgba(41, 98, 255, 0.50); }"
-        "QListWidget, QPlainTextEdit, QComboBox, QLineEdit { background: rgba(255, 255, 255, 0.10); border: 1.2px solid rgba(255, 255, 255, 0.32); border-radius: 14px; color: #F0F6FF; padding: 6px 12px; }"
-        "QComboBox QAbstractItemView { background: rgba(13, 27, 66, 0.88); border: 1.2px solid rgba(255, 255, 255, 0.38); border-radius: 12px; color: #FFFFFF; selection-background-color: rgba(0, 229, 255, 0.35); outline: none; }"
+        "QWidget#shellRoot, QScrollArea, QStackedWidget, QWidget#pageOverview, QWidget#pageFiles, QWidget#pageConnect, QWidget#pageTransfer, QWidget#pageStorage { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0B1220, stop:0.5 #141E30, stop:1 #0F172A); border: none; }"
+        "QWidget#liquidSidebar { background: rgba(255, 255, 255, 0.04); border-right: 1px solid rgba(255, 255, 255, 0.16); }"
+        "QGroupBox { background: rgba(255, 255, 255, 0.07); border: 1.2px solid rgba(255, 255, 255, 0.22); border-radius: 18px; margin-top: 14px; padding: 14px; color: #F1F5F9; font-weight: 600; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 16px; padding: 0 8px; color: rgba(255,255,255,0.85); font-weight: 700; }"
+        "QLabel { color: #F1F5F9; background: transparent; }"
+        "QPushButton { background: rgba(255, 255, 255, 0.12); border: 1.2px solid rgba(255, 255, 255, 0.32); border-radius: 18px; min-height: 36px; padding: 2px 18px; color: #FFFFFF; font-weight: 600; }"
+        "QPushButton:hover { background: rgba(255, 255, 255, 0.22); border-color: rgba(255, 255, 255, 0.55); }"
+        "QPushButton:pressed { background: rgba(255, 255, 255, 0.28); }"
+        "QListWidget, QPlainTextEdit, QComboBox, QLineEdit { background: rgba(255, 255, 255, 0.07); border: 1.2px solid rgba(255, 255, 255, 0.24); border-radius: 12px; color: #F1F5F9; padding: 6px 12px; }"
+        "QComboBox QAbstractItemView { background: rgba(15, 23, 42, 0.92); border: 1.2px solid rgba(255, 255, 255, 0.34); border-radius: 12px; color: #FFFFFF; selection-background-color: rgba(255, 255, 255, 0.20); outline: none; }"
     ));
 
     m_p2p = new WifiP2pBackend(this);
     m_server = new TlsReceiverServer(this);
 
-    m_pages = new QStackedWidget(this);
+    auto* shell = new QWidget(this);
+    shell->setObjectName(QStringLiteral("shellRoot"));
+    auto* shellLayout = new QHBoxLayout(shell);
+    shellLayout->setContentsMargins(0, 0, 0, 0);
+    shellLayout->setSpacing(0);
 
-    // ================= PAGE 0: SETUP & DISCOVERY =================
-    auto* scrollArea = new QScrollArea(m_pages);
-    scrollArea->setWidgetResizable(true);
-    auto* setupPage = new QWidget(scrollArea);
-    setupPage->setObjectName(QStringLiteral("pageSetup"));
-    auto* root = new QVBoxLayout(setupPage);
-    root->setContentsMargins(18, 18, 18, 18);
-    root->setSpacing(12);
+    auto* sidebar = new LiquidSidebar(shell);
+    m_sidebar = sidebar;
+    shellLayout->addWidget(sidebar);
 
-    auto* topBox = new QGroupBox(QStringLiteral("Connection & Wireless Band"), setupPage);
+    m_pages = new QStackedWidget(shell);
+    shellLayout->addWidget(m_pages, 1);
+
+    // ================= PAGE 0: OVERVIEW =================
+    auto* overviewScroll = new QScrollArea(m_pages);
+    overviewScroll->setWidgetResizable(true);
+    auto* overviewPage = new QWidget(overviewScroll);
+    overviewPage->setObjectName(QStringLiteral("pageOverview"));
+    auto* ovLayout = new QVBoxLayout(overviewPage);
+    ovLayout->setContentsMargins(20, 20, 20, 20);
+    ovLayout->setSpacing(14);
+
+    auto* topBox = new QGroupBox(QStringLiteral("Connection & Wireless Band"), overviewPage);
     auto* topLayout = new QHBoxLayout(topBox);
     m_lblTransport = new QLabel(QStringLiteral("Transport: Wi-Fi Direct (TLS 1.3)"), topBox);
     m_lblP2pStatus = new QLabel(QStringLiteral("Status: Ready"), topBox);
@@ -61,9 +76,25 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     topLayout->addWidget(m_bandSelector);
     topLayout->addWidget(m_lblP2pStatus, 1);
     topLayout->addWidget(m_btnOpenConnectPage);
-    root->addWidget(topBox);
+    ovLayout->addWidget(topBox);
 
-    auto* sendBox = new QGroupBox(QStringLiteral("Send Queue (Select, Search & Sort)"), setupPage);
+    auto* logBox = new QGroupBox(QStringLiteral("Activity Log"), overviewPage);
+    auto* logLayout = new QVBoxLayout(logBox);
+    m_logView = new QPlainTextEdit(logBox);
+    m_logView->setReadOnly(true);
+    logLayout->addWidget(m_logView);
+    ovLayout->addWidget(logBox, 1);
+    overviewScroll->setWidget(overviewPage);
+    m_pages->addWidget(overviewScroll);
+
+    // ================= PAGE 1: FILES (SEND QUEUE) =================
+    auto* filesPage = new QWidget(m_pages);
+    filesPage->setObjectName(QStringLiteral("pageFiles"));
+    auto* filesLayout = new QVBoxLayout(filesPage);
+    filesLayout->setContentsMargins(20, 20, 20, 20);
+    filesLayout->setSpacing(12);
+
+    auto* sendBox = new QGroupBox(QStringLiteral("Files & Send Queue"), filesPage);
     auto* sendVLayout = new QVBoxLayout(sendBox);
     auto* sendLayout = new QHBoxLayout();
     m_lblSendQueue = new QLabel(QStringLiteral("No files queued"), sendBox);
@@ -81,70 +112,57 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_searchSend = new QLineEdit(sendBox);
     m_searchSend->setPlaceholderText(QStringLiteral("Search queued files..."));
     m_sendBrowserList = new QListWidget(sendBox);
-    m_sendBrowserList->setMaximumHeight(110);
     sendVLayout->addLayout(sendLayout);
     sendVLayout->addWidget(m_searchSend);
-    sendVLayout->addWidget(m_sendBrowserList);
-    root->addWidget(sendBox);
+    sendVLayout->addWidget(m_sendBrowserList, 1);
+    filesLayout->addWidget(sendBox, 1);
+    m_pages->addWidget(filesPage);
 
-    auto* p2pBox = new QGroupBox(QStringLiteral("Nearby Devices"), setupPage);
-    auto* p2pLayout = new QVBoxLayout(p2pBox);
-    auto* p2pBtns = new QHBoxLayout();
-    m_radarWidget = new RadarScanWidget(p2pBox);
-    m_btnScan = new QPushButton(QStringLiteral("Discover Peers"), p2pBox);
-    m_btnConnectPeer = new QPushButton(QStringLiteral("Connect Selected Peer"), p2pBox);
-    p2pBtns->addWidget(m_radarWidget);
-    p2pBtns->addWidget(m_btnScan);
-    p2pBtns->addWidget(m_btnConnectPeer);
-    p2pBtns->addStretch();
-    m_peerList = new QListWidget(p2pBox);
-    m_peerList->setMaximumHeight(110);
-    p2pLayout->addLayout(p2pBtns);
-    p2pLayout->addWidget(m_peerList);
-    root->addWidget(p2pBox);
+    // ================= PAGE 2: CONNECT DEVICE =================
+    auto* connectPage = new QWidget(m_pages);
+    connectPage->setObjectName(QStringLiteral("pageConnect"));
+    auto* connRoot = new QVBoxLayout(connectPage);
+    connRoot->setContentsMargins(20, 20, 20, 20);
+    connRoot->setSpacing(12);
 
-    auto* destBox = new QGroupBox(QStringLiteral("Receiving Folder & Policy"), setupPage);
-    auto* destLayout = new QVBoxLayout(destBox);
-    auto* destRow = new QHBoxLayout();
-    m_lblDestPath = new QLabel(m_server->destinationRoot(), destBox);
-    m_lblDestPath->setWordWrap(true);
-    m_btnDest = new QPushButton(QStringLiteral("Choose Folder..."), destBox);
-    m_btnOpenDest = new QPushButton(QStringLiteral("Open Folder"), destBox);
-    destRow->addWidget(m_lblDestPath, 1);
-    destRow->addWidget(m_btnDest);
-    destRow->addWidget(m_btnOpenDest);
-    auto* policyRow = new QHBoxLayout();
-    m_lblDiskSpace = new QLabel(destBox);
-    m_conflictCombo = new QComboBox(destBox);
-    m_conflictCombo->addItem(QStringLiteral("Keep Both (Rename)"), static_cast<int>(ConflictPolicy::KeepBothRename));
-    m_conflictCombo->addItem(QStringLiteral("Skip Existing"), static_cast<int>(ConflictPolicy::SkipExisting));
-    m_conflictCombo->addItem(QStringLiteral("Replace (Confirm)"), static_cast<int>(ConflictPolicy::ReplaceWithConfirm));
-    policyRow->addWidget(m_lblDiskSpace, 1);
-    policyRow->addWidget(new QLabel(QStringLiteral("Conflicts:"), destBox));
-    policyRow->addWidget(m_conflictCombo);
-    destLayout->addLayout(destRow);
-    destLayout->addLayout(policyRow);
-    root->addWidget(destBox);
+    auto* connHeader = new QHBoxLayout();
+    m_btnBackFromConnect = new QPushButton(QStringLiteral("← Overview"), connectPage);
+    auto* lblConnTitle = new QLabel(QStringLiteral("Connect Device"), connectPage);
+    lblConnTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #FFFFFF;"));
+    m_radarWidget = new RadarScanWidget(connectPage);
+    m_btnScan = new QPushButton(QStringLiteral("Rescan"), connectPage);
+    m_btnConnectPeer = new QPushButton(QStringLiteral("Connect Selected"), connectPage);
+    connHeader->addWidget(m_btnBackFromConnect);
+    connHeader->addWidget(lblConnTitle);
+    connHeader->addStretch();
+    connHeader->addWidget(m_radarWidget);
+    connHeader->addWidget(m_btnScan);
+    connHeader->addWidget(m_btnConnectPeer);
+    connRoot->addLayout(connHeader);
 
-    auto* logBox = new QGroupBox(QStringLiteral("Activity Log"), setupPage);
-    auto* logLayout = new QVBoxLayout(logBox);
-    m_logView = new QPlainTextEdit(logBox);
-    m_logView->setReadOnly(true);
-    logLayout->addWidget(m_logView);
-    root->addWidget(logBox, 1);
+    auto* connBox = new QGroupBox(QStringLiteral("Nearby Devices"), connectPage);
+    auto* connBoxLayout = new QVBoxLayout(connBox);
+    m_deviceCardsHost = new QWidget(connBox);
+    auto* cardsLayout = new QVBoxLayout(m_deviceCardsHost);
+    cardsLayout->setContentsMargins(0, 0, 0, 0);
+    cardsLayout->setSpacing(8);
+    cardsLayout->addStretch();
+    m_peerList = new QListWidget(connBox);
+    m_peerList->setMaximumHeight(90);
+    connBoxLayout->addWidget(m_deviceCardsHost, 1);
+    connBoxLayout->addWidget(m_peerList);
+    connRoot->addWidget(connBox, 1);
+    m_pages->addWidget(connectPage);
 
-    scrollArea->setWidget(setupPage);
-    m_pages->addWidget(scrollArea);
-
-    // ================= PAGE 1: DEDICATED ACTIVE TRANSFER SCREEN =================
+    // ================= PAGE 3: TRANSFERS =================
     auto* txPage = new QWidget(m_pages);
     txPage->setObjectName(QStringLiteral("pageTransfer"));
     auto* txRoot = new QVBoxLayout(txPage);
-    txRoot->setContentsMargins(18, 18, 18, 18);
+    txRoot->setContentsMargins(20, 20, 20, 20);
     txRoot->setSpacing(12);
 
     auto* txTopRow = new QHBoxLayout();
-    m_btnBackToSetup = new QPushButton(QStringLiteral("← Back to Setup"), txPage);
+    m_btnBackToSetup = new QPushButton(QStringLiteral("← Overview"), txPage);
     txTopRow->addWidget(m_btnBackToSetup);
     txTopRow->addStretch();
     txRoot->addLayout(txTopRow);
@@ -167,43 +185,47 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     txRoot->addWidget(txBox);
 
     auto* filesBox = new QGroupBox(QStringLiteral("Files in Transfer"), txPage);
-    auto* filesLayout = new QVBoxLayout(filesBox);
+    auto* txFilesLayout = new QVBoxLayout(filesBox);
     m_transferFileList = new QListWidget(filesBox);
-    filesLayout->addWidget(m_transferFileList);
+    txFilesLayout->addWidget(m_transferFileList);
     txRoot->addWidget(filesBox, 1);
-
     m_pages->addWidget(txPage);
 
-    // ================= PAGE 2: DEDICATED CONNECT DEVICE PAGE =================
-    auto* connectPage = new QWidget(m_pages);
-    connectPage->setObjectName(QStringLiteral("pageConnect"));
-    auto* connRoot = new QVBoxLayout(connectPage);
-    connRoot->setContentsMargins(18, 18, 18, 18);
-    connRoot->setSpacing(12);
+    // ================= PAGE 4: STORAGE =================
+    auto* storagePage = new QWidget(m_pages);
+    storagePage->setObjectName(QStringLiteral("pageStorage"));
+    auto* stLayout = new QVBoxLayout(storagePage);
+    stLayout->setContentsMargins(20, 20, 20, 20);
 
-    auto* connHeader = new QHBoxLayout();
-    m_btnBackFromConnect = new QPushButton(QStringLiteral("← Back"), connectPage);
-    auto* lblConnTitle = new QLabel(QStringLiteral("Connect Device"), connectPage);
-    lblConnTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #FFFFFF;"));
-    connHeader->addWidget(m_btnBackFromConnect);
-    connHeader->addWidget(lblConnTitle);
-    connHeader->addStretch();
-    connRoot->addLayout(connHeader);
+    auto* destBox = new QGroupBox(QStringLiteral("Receiving Folder & Conflict Policy"), storagePage);
+    auto* destLayout = new QVBoxLayout(destBox);
+    auto* destRow = new QHBoxLayout();
+    m_lblDestPath = new QLabel(m_server->destinationRoot(), destBox);
+    m_lblDestPath->setWordWrap(true);
+    m_btnDest = new QPushButton(QStringLiteral("Choose Folder..."), destBox);
+    m_btnOpenDest = new QPushButton(QStringLiteral("Open Folder"), destBox);
+    destRow->addWidget(m_lblDestPath, 1);
+    destRow->addWidget(m_btnDest);
+    destRow->addWidget(m_btnOpenDest);
+    auto* policyRow = new QHBoxLayout();
+    m_lblDiskSpace = new QLabel(destBox);
+    m_conflictCombo = new QComboBox(destBox);
+    m_conflictCombo->addItem(QStringLiteral("Keep Both (Rename)"), static_cast<int>(ConflictPolicy::KeepBothRename));
+    m_conflictCombo->addItem(QStringLiteral("Skip Existing"), static_cast<int>(ConflictPolicy::SkipExisting));
+    m_conflictCombo->addItem(QStringLiteral("Replace (Confirm)"), static_cast<int>(ConflictPolicy::ReplaceWithConfirm));
+    policyRow->addWidget(m_lblDiskSpace, 1);
+    policyRow->addWidget(new QLabel(QStringLiteral("Conflicts:"), destBox));
+    policyRow->addWidget(m_conflictCombo);
+    destLayout->addLayout(destRow);
+    destLayout->addLayout(policyRow);
+    stLayout->addWidget(destBox);
+    stLayout->addStretch();
+    m_pages->addWidget(storagePage);
 
-    auto* connBox = new QGroupBox(QStringLiteral("Discovered Devices (Click for Liquid Ripple)"), connectPage);
-    auto* connBoxLayout = new QVBoxLayout(connBox);
-    m_deviceCardsHost = new QWidget(connBox);
-    auto* cardsLayout = new QVBoxLayout(m_deviceCardsHost);
-    cardsLayout->setContentsMargins(0, 0, 0, 0);
-    cardsLayout->setSpacing(8);
-    cardsLayout->addStretch();
-    connBoxLayout->addWidget(m_deviceCardsHost);
-    connRoot->addWidget(connBox, 1);
-
-    m_pages->addWidget(connectPage);
-    setCentralWidget(m_pages);
+    setCentralWidget(shell);
     updateDiskSpaceLabel();
 
+    connect(sidebar, &LiquidSidebar::navigationSelected, this, &MainWindow::setPageIndex);
     connect(m_btnScan, &QPushButton::clicked, this, &MainWindow::onStartScan);
     connect(m_btnConnectPeer, &QPushButton::clicked, this, &MainWindow::onConnectSelectedPeer);
     connect(m_btnDest, &QPushButton::clicked, this, &MainWindow::onChooseDestination);
@@ -246,11 +268,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(m_btnSendQueued, &QPushButton::clicked, this, &MainWindow::onSendQueuedToPeer);
     connect(m_btnOpenConnectPage, &QPushButton::clicked, this, [this]() {
-        m_pages->setCurrentIndex(2);
+        setPageIndex(2);
         onStartScan();
     });
-    connect(m_btnBackFromConnect, &QPushButton::clicked, this, [this]() { m_pages->setCurrentIndex(0); });
-    connect(m_btnBackToSetup, &QPushButton::clicked, this, [this]() { m_pages->setCurrentIndex(0); });
+    connect(m_btnBackFromConnect, &QPushButton::clicked, this, [this]() { setPageIndex(0); });
+    connect(m_btnBackToSetup, &QPushButton::clicked, this, [this]() { setPageIndex(0); });
     connect(m_conflictCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
         m_server->setConflictPolicy(static_cast<ConflictPolicy>(m_conflictCombo->itemData(idx).toInt()));
     });
@@ -277,6 +299,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         m_receiverRunning = true;
     } else {
         appendLog(QStringLiteral("Receiver warning: %1").arg(listenErr));
+    }
+}
+
+void MainWindow::setPageIndex(int idx) {
+    if (m_pages) m_pages->setCurrentIndex(idx);
+    if (auto* sb = qobject_cast<LiquidSidebar*>(m_sidebar)) {
+        sb->setActiveIndex(idx);
     }
 }
 
@@ -406,7 +435,7 @@ void MainWindow::onTransferStarted(int totalFiles, uint64_t) {
     m_fileItems.clear();
     m_progressBar->setValue(0);
     m_lblCurrentFile->setText(QStringLiteral("Starting transfer (%1 files)...").arg(totalFiles));
-    m_pages->setCurrentIndex(1); // Switch to Dedicated Transfer Screen
+    setPageIndex(3);
 }
 
 void MainWindow::onFileProgress(const QString& relPath, uint64_t receivedBytes, uint64_t totalBytes, bool verified) {

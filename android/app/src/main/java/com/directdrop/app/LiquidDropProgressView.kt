@@ -71,23 +71,18 @@ class LiquidDropProgressView @JvmOverloads constructor(
             fillRect.set(trackRect.left, trackRect.top, trackRect.left + fillW, trackRect.bottom)
             fillPaint.shader = LinearGradient(
                 fillRect.left, 0f, fillRect.right, 0f,
-                Color.parseColor("#2962FF"),
-                Color.parseColor("#00E5FF"),
+                Color.argb(28, 255, 255, 255),
+                Color.argb(68, 255, 255, 255),
                 Shader.TileMode.CLAMP
             )
             canvas.drawRoundRect(fillRect, r, r, fillPaint)
+            canvas.drawRoundRect(fillRect, r, r, borderPaint)
         }
 
         val dropR = r * 1.25f
         val dropX = trackRect.left + (trackRect.width() - r * 2f) * frac + r
         val dropY = trackRect.centerY()
-        dropPaint.shader = RadialGradient(
-            dropX - dropR * 0.25f, dropY - dropR * 0.25f, dropR * 1.2f,
-            intArrayOf(Color.WHITE, Color.parseColor("#00E5FF"), Color.parseColor("#2962FF")),
-            floatArrayOf(0f, 0.4f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(dropX, dropY, dropR, dropPaint)
-        canvas.drawCircle(dropX, dropY, dropR, borderPaint)
+        val dropRect = RectF(dropX - dropR, dropY - dropR * 0.88f, dropX + dropR, dropY + dropR * 0.88f)
+        TransparentGlassPainter.drawGlassLens(canvas, dropRect, dropR * 0.88f, dropX - dropR * 0.25f, dropY - dropR * 0.3f, 1f)
     }
 }

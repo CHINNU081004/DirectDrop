@@ -149,26 +149,12 @@ class LiquidBandSelectorView @JvmOverloads constructor(
             trackRect.bottom - 3f - compressY
         )
 
-        thumbPaint.shader = LinearGradient(
-            thumbRect.left, thumbRect.top, thumbRect.right, thumbRect.bottom,
-            Color.argb(180, 41, 98, 255),
-            Color.argb(200, 0, 229, 255),
-            Shader.TileMode.CLAMP
-        )
         val tr = thumbRect.height() / 2f
-        canvas.drawRoundRect(thumbRect, tr, tr, thumbPaint)
-
         val hlX = if (isDragging) pointerX.coerceIn(thumbRect.left, thumbRect.right) else thumbRect.centerX()
-        highlightPaint.shader = RadialGradient(
-            hlX, thumbRect.top + thumbRect.height() * 0.25f, thumbRect.width() * 0.6f,
-            intArrayOf(Color.argb(140, 255, 255, 255), Color.TRANSPARENT),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRoundRect(thumbRect, tr, tr, highlightPaint)
-        canvas.drawRoundRect(thumbRect, tr, tr, borderPaint)
+        val hlY = if (isDragging) pointerY.coerceIn(thumbRect.top, thumbRect.bottom) else thumbRect.top + thumbRect.height() * 0.28f
+        TransparentGlassPainter.drawGlassLens(canvas, thumbRect, tr, hlX, hlY, 1f)
 
-        textPaint.textSize = 13f * resources.displayMetrics.scaledDensity
+        textPaint.textSize = 13f * resources.displayMetrics.density
         val textY = trackRect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f
         Band.entries.forEachIndexed { idx, band ->
             textPaint.color = if (idx == selectedBand.ordinal) Color.WHITE else Color.argb(190, 227, 242, 253)

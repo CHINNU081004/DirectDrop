@@ -86,24 +86,16 @@ protected:
 
         double inset = m_press.value * 2.5;
         QRectF r = rect().adjusted(2 + inset, 2 + inset, -2 - inset, -2 - inset);
-
-        p.setBrush(m_selected ? QColor(0, 229, 255, 52) : QColor(255, 255, 255, m_hovered ? 34 : 22));
-        p.setPen(Qt::NoPen);
-        p.drawRoundedRect(r, 16.0, 16.0);
-
-        if (m_hovered) {
-            QRadialGradient hl(m_pointer, qMax(width(), height()) * 0.55);
-            hl.setColorAt(0.0, QColor(255, 255, 255, 60));
-            hl.setColorAt(1.0, Qt::transparent);
-            p.setBrush(hl);
-            p.drawRoundedRect(r, 16.0, 16.0);
-        }
+        QPointF lightPos = m_hovered ? m_pointer : QPointF(r.center().x(), r.top() + r.height() * 0.25);
+        drawTransparentGlassLens(p, r, 16.0, lightPos, m_selected ? 1.0 : (m_hovered ? 0.85 : 0.60));
 
         m_ripple.draw(p);
 
-        p.setBrush(Qt::NoBrush);
-        p.setPen(QPen(m_selected ? QColor(0, 229, 255, 210) : QColor(255, 255, 255, 78), 1.4));
-        p.drawRoundedRect(r, 16.0, 16.0);
+        if (m_selected) {
+            p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(QColor(255, 255, 255, 215), 1.8));
+            p.drawRoundedRect(r, 16.0, 16.0);
+        }
     }
 
 private:
