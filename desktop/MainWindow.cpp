@@ -15,9 +15,11 @@
 #include <QFileInfo>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHostInfo>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QSettings>
 #include <QStorageInfo>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -54,6 +56,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     m_p2p = new WifiP2pBackend(this);
     m_server = new TlsReceiverServer(this);
+    m_lanDiscovery = new LanDiscoveryService(this);
+    m_adapterCap = AdaptiveWifiPolicy::probeCapabilities();
+    if (!m_adapterCap.supportsP2p && m_adapterCap.hasLanInterface) {
+        m_activeTransport = TransportKind::SecureLanTcp;
+    }
 
     auto* shell = new QWidget(this);
     shell->setObjectName(QStringLiteral("shellRoot"));
@@ -91,7 +98,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     topLayout->addWidget(bandSel);
     topLayout->addWidget(m_lblP2pStatus);
     topLayout->addWidget(m_btnOpenConnectPage);
-    auto cap = AdaptiveWifiPolicy::probeCapabilities();
+    auto cap = m_adapterCap;
     m_lblAdapterCap = new QLabel(QStringLiteral("Adapter: %1").arg(cap.summary), topBox);
     m_lblAdapterCap->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.72); font-size: 12px;"));
     m_lblBandPolicy = new QLabel(AdaptiveWifiPolicy::describeMode(BandMode::AutoRecommended, cap), topBox);
@@ -102,8 +109,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     topVLayout->addWidget(m_lblBandPolicy);
     ovLayout->addWidget(topBox);
 
-    connect(bandSel, &LiquidBandSelector::bandChanged, this, [this, cap](int idx, const QString&) {
-        m_lblBandPolicy->setText(AdaptiveWifiPolicy::describeMode(static_cast<BandMode>(idx), cap));
+    connect(bandSel, &LiquidBandSelector::bandChanged, this, [this](int idx, const QString&) {
+        applyBandPreference(idx, true);
     });
 
     auto* logBox = new QGroupBox(QStringLiteral("Activity Log"), overviewPage);
@@ -154,7 +161,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connHeader->addWidget(m_btnConnectPeer);
     connRoot->addWidget(connHeaderHost);
 
-    auto* connBox = new QGroupBox(QStringLiteral("Nearby Devices"), connectPage);
+    auto* bandBox = new QGroupBox(QStringLiteral("Wi-Fi Band Preference && Telemetry"), connectPage);
+    auto* bandBoxLayout = new QVBoxLayout(bandBox);
+    bandBoxLayout->setSpacing(6);
+    auto* connBandSel = new LiquidBandSelector(bandBox);
+    m_connectBandSelector = connBandSel;
+    m_lblConnBandStatus = new QLabel(bandBox);
+    m_lblConnBandStatus->setStyleSheet(QStringLiteral("font-weight: 700; color: #FFFFFF; font-size: 13px;"));
+    m_lblConnBandStatus->setWordWrap(true);
+    m_lblConnWhy = new QLabel(bandBox);
+    m_lblConnWhy->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.78); font-size: 12px;"));
+    m_lblConnWhy->setWordWrap(true);
+    bandBoxLayout->addWidget(connBandSel);
+    bandBoxLayout->addWidget(m_lblConnBandStatus);
+    bandBoxLayout->addWidget(m_lblConnWhy);
+    connRoot->addWidget(bandBox);
+
+    connect(connBandSel, &LiquidBandSelector::bandChanged, this, [this](int idx, const QString&) {
+        applyBandPreference(idx, true);
+    });
+
+    auto* connBox = new QGroupBox(QStringLiteral("Nearby Devices (Wi-Fi Direct)"), connectPage);
     auto* connBoxLayout = new QVBoxLayout(connBox);
     m_deviceCardsHost = new QWidget(connBox);
     auto* cardsLayout = new QVBoxLayout(m_deviceCardsHost);
@@ -162,10 +189,32 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     cardsLayout->setSpacing(8);
     cardsLayout->addStretch();
     m_peerList = new QListWidget(connBox);
-    m_peerList->setMaximumHeight(90);
+    m_peerList->setMaximumHeight(85);
     connBoxLayout->addWidget(m_deviceCardsHost, 1);
     connBoxLayout->addWidget(m_peerList);
     connRoot->addWidget(connBox, 1);
+
+    auto* lanBox = new QGroupBox(QStringLiteral("Secure LAN Fallback (TLS 1.3 • Local Network)"), connectPage);
+    auto* lanLayout = new QVBoxLayout(lanBox);
+    QString localIps = m_adapterCap.lanAddresses.isEmpty()
+        ? QStringLiteral("No active LAN IP")
+        : m_adapterCap.lanAddresses.join(QStringLiteral(", "));
+    auto* lblLocalLan = new QLabel(QStringLiteral("This device LAN endpoint: %1 : 47291").arg(localIps), lanBox);
+    lblLocalLan->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.80); font-size: 12px;"));
+    m_lanPeerList = new QListWidget(lanBox);
+    m_lanPeerList->setMaximumHeight(72);
+    auto* lanRow = new QHBoxLayout();
+    m_lanIpEdit = new QLineEdit(lanBox);
+    m_lanIpEdit->setPlaceholderText(QStringLiteral("Manual peer IP (e.g. 192.168.1.42 or 192.168.1.42:47291)"));
+    m_btnConnectLan = new QPushButton(QStringLiteral("Use Secure LAN"), lanBox);
+    m_btnConnectLan->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    lanRow->addWidget(m_lanIpEdit, 1);
+    lanRow->addWidget(m_btnConnectLan);
+    lanLayout->addWidget(lblLocalLan);
+    lanLayout->addWidget(m_lanPeerList);
+    lanLayout->addLayout(lanRow);
+    connRoot->addWidget(lanBox);
+
     m_pages->addWidget(connectPage);
 
     // ================= PAGE 3: TRANSFERS =================
@@ -279,8 +328,73 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     QString listenErr;
     if (m_server->startListening(QHostAddress::AnyIPv4, 47291, &listenErr)) {
         m_receiverRunning = true;
+        m_lanDiscovery->start(QHostInfo::localHostName(), 47291, m_adapterCap.summary);
     } else {
         appendLog(QStringLiteral("Receiver warning: %1").arg(listenErr));
+    }
+
+    connect(m_lanDiscovery, &LanDiscoveryService::peersUpdated, this, [this](const QList<LanPeerInfo>& peers) {
+        m_lanPeerList->clear();
+        for (const auto& p : peers) {
+            auto* it = new QListWidgetItem(
+                QStringLiteral("%1 (%2:%3) — %4").arg(p.deviceName, p.ip).arg(p.tlsPort).arg(p.bands),
+                m_lanPeerList);
+            it->setData(Qt::UserRole, p.ip);
+            it->setData(Qt::UserRole + 1, static_cast<int>(p.tlsPort));
+        }
+    });
+    connect(m_lanPeerList, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
+        if (!it) return;
+        m_lanIpEdit->setText(QStringLiteral("%1:%2").arg(it->data(Qt::UserRole).toString()).arg(it->data(Qt::UserRole + 1).toInt()));
+    });
+    connect(m_btnConnectLan, &QPushButton::clicked, this, [this]() {
+        const QString raw = m_lanIpEdit->text().trimmed();
+        if (raw.isEmpty()) {
+            QMessageBox::information(this, QStringLiteral("Enter IP"), QStringLiteral("Enter a peer LAN IP (e.g. 192.168.1.42) or tap a discovered LAN peer."));
+            return;
+        }
+        const QStringList parts = raw.split(':');
+        QHostAddress addr(parts[0]);
+        if (addr.isNull()) {
+            QMessageBox::warning(this, QStringLiteral("Invalid IP"), QStringLiteral("'%1' is not a valid IPv4/IPv6 address.").arg(parts[0]));
+            return;
+        }
+        m_lanTargetIp = parts[0];
+        m_lanTargetPort = (parts.size() > 1 && parts[1].toUShort() > 0) ? parts[1].toUShort() : 47291;
+        m_activeTransport = TransportKind::ManualIpTls;
+        m_lblP2pStatus->setText(QStringLiteral("Transport: Secure LAN (%1:%2)").arg(m_lanTargetIp).arg(m_lanTargetPort));
+        appendLog(QStringLiteral("Secure LAN target set to %1:%2 (TLS 1.3 + SAS)").arg(m_lanTargetIp).arg(m_lanTargetPort));
+        applyBandPreference(qobject_cast<LiquidBandSelector*>(m_bandSelector)->currentIndex(), false);
+    });
+
+    QSettings settings(QStringLiteral("DirectDrop"), QStringLiteral("DirectDrop"));
+    int savedBand = qBound(0, settings.value(QStringLiteral("bandPreference"), 0).toInt(), 3);
+    applyBandPreference(savedBand, false);
+}
+
+void MainWindow::applyBandPreference(int idx, bool persist) {
+    int clamped = qBound(0, idx, 3);
+    if (auto* ovBand = qobject_cast<LiquidBandSelector*>(m_bandSelector)) {
+        if (ovBand->currentIndex() != clamped) ovBand->setCurrentIndex(clamped, false);
+    }
+    if (auto* connBand = qobject_cast<LiquidBandSelector*>(m_connectBandSelector)) {
+        if (connBand->currentIndex() != clamped) connBand->setCurrentIndex(clamped, false);
+    }
+    if (persist) {
+        QSettings settings(QStringLiteral("DirectDrop"), QStringLiteral("DirectDrop"));
+        settings.setValue(QStringLiteral("bandPreference"), clamped);
+    }
+    auto decision = AdaptiveWifiPolicy::evaluateBand(
+        static_cast<BandMode>(clamped),
+        m_adapterCap,
+        PeerCapabilities{true, m_adapterCap.supports5GHz, m_adapterCap.supports6GHz, m_adapterCap.supportsP2p, true},
+        m_activeTransport);
+    if (m_lblBandPolicy) m_lblBandPolicy->setText(decision.explanation);
+    if (m_lblConnBandStatus) {
+        m_lblConnBandStatus->setText(QStringLiteral("%1 • Active: %2").arg(decision.statusHeadline, decision.activeBandLabel));
+    }
+    if (m_lblConnWhy) {
+        m_lblConnWhy->setText(QStringLiteral("Why this option? %1").arg(decision.explanation));
     }
 }
 
@@ -330,14 +444,19 @@ void MainWindow::onSendQueuedToPeer() {
         return;
     }
     QString host = m_p2p->gatewayIp();
+    quint16 port = 47291;
+    if (host.isEmpty() && !m_lanTargetIp.isEmpty()) {
+        host = m_lanTargetIp;
+        port = m_lanTargetPort;
+    }
     if (host.isEmpty()) {
-        QMessageBox::information(this, QStringLiteral("Not Connected"), QStringLiteral("Connect to a Wi-Fi Direct peer first."));
+        QMessageBox::information(this, QStringLiteral("Not Connected"), QStringLiteral("Connect to a Wi-Fi Direct peer or set a Secure LAN target first."));
         return;
     }
     TlsSenderClient client;
     QString err;
-    if (client.sendFiles(host, 47291, m_queuedSendFiles, m_queuedSendBaseDir, &err)) {
-        appendLog(QStringLiteral("Sent %1 queued file(s) to %2").arg(m_queuedSendFiles.size()).arg(host));
+    if (client.sendFiles(host, port, m_queuedSendFiles, m_queuedSendBaseDir, &err)) {
+        appendLog(QStringLiteral("Sent %1 queued file(s) to %2:%3").arg(m_queuedSendFiles.size()).arg(host).arg(port));
     } else {
         QMessageBox::warning(this, QStringLiteral("Send Failed"), err);
     }

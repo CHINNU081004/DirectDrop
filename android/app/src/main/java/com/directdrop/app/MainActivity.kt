@@ -201,10 +201,49 @@ class MainActivity : AppCompatActivity() {
         val btnDiscover: MaterialButton = findViewById(R.id.btnDiscover)
         val btnConnect: MaterialButton = findViewById(R.id.btnConnect)
         val bandSelector: LiquidBandSelectorView = findViewById(R.id.bandSelector)
+        val bandStatusText: TextView = findViewById(R.id.bandStatusText)
+        val bandWhyText: TextView = findViewById(R.id.bandWhyText)
+        val lanIpInput: android.widget.EditText = findViewById(R.id.lanIpInput)
+        val btnConnectLan: MaterialButton = findViewById(R.id.btnConnectLan)
+        var activeTransport = ActiveTransport.WIFI_DIRECT
+
+        fun refreshBandTelemetry(band: LiquidBandSelectorView.Band) {
+            val cap = BandCapabilityManager.probe(this)
+            val eval = BandCapabilityManager.evaluate(band, cap, activeTransport)
+            bandStatusText.text = "${eval.statusHeadline} • Active: ${eval.activeBandLabel}"
+            bandWhyText.text = "Why this option? ${eval.explanation}"
+        }
+
+        val savedBand = BandCapabilityManager.loadSavedBand(this)
+        bandSelector.setBand(savedBand, notify = false)
+        refreshBandTelemetry(savedBand)
+        bandSelector.onBandChanged = { band ->
+            BandCapabilityManager.saveBand(this, band)
+            refreshBandTelemetry(band)
+        }
+
+        btnConnectLan.setOnClickListener {
+            val ip = lanIpInput.text?.toString()?.trim().orEmpty()
+            if (ip.isEmpty()) {
+                statusText.text = "Enter desktop LAN IP (e.g. 192.168.1.42) for TLS 1.3 fallback."
+                return@setOnClickListener
+            }
+            connectedHostIp = ip
+            activeTransport = ActiveTransport.SECURE_LAN_TLS
+            statusText.text = "Secure LAN target: $ip:47291 (TLS 1.3 + SAS)"
+            refreshBandTelemetry(bandSelector.selectedBand)
+        }
+
         val deviceRecycler: RecyclerView = findViewById(R.id.deviceRecyclerView)
         deviceRecycler.layoutManager = LinearLayoutManager(this)
         deviceAdapter = DeviceAdapter { dev ->
             selectedDevice = dev
+            activeTransport = ActiveTransport.WIFI_DIRECT
+            if (bandSelector.selectedBand == LiquidBandSelectorView.Band.GHZ_6) {
+                refreshBandTelemetry(bandSelector.selectedBand)
+                statusText.text = "6 GHz unavailable for Wi-Fi Direct; choose Auto, 5 GHz, or Use LAN."
+                return@DeviceAdapter
+            }
             val band = when (bandSelector.selectedBand) {
                 LiquidBandSelectorView.Band.GHZ_24 -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
                 LiquidBandSelectorView.Band.GHZ_5 -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
@@ -420,6 +459,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnConnect.setOnClickListener {
+            if (bandSelector.selectedBand == LiquidBandSelectorView.Band.GHZ_6) {
+                statusText.text = "6 GHz unavailable for Wi-Fi Direct; choose Auto, 5 GHz, or Use LAN."
+                return@setOnClickListener
+            }
             val band = when (bandSelector.selectedBand) {
                 LiquidBandSelectorView.Band.GHZ_24 -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
                 LiquidBandSelectorView.Band.GHZ_5 -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
@@ -427,7 +470,7 @@ class MainActivity : AppCompatActivity() {
             }
             val target = selectedDevice ?: discoveredPeers.firstOrNull()
             target?.let { p2pController.connectToPeer(it, band) }
-                ?: run { statusText.text = "No peers discovered yet." }
+                ?: run { statusText.text = "No peers discovered yet. Use LAN IP fallback if needed." }
         }
 
         lifecycleScope.launch {

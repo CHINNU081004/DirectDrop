@@ -4,6 +4,7 @@
 #include "TlsServer.hpp"
 #include "AdaptiveWifiPolicy.hpp"
 #include "FileManagerWidget.hpp"
+#include "LiquidBandSelector.hpp"
 #include "LiquidSidebar.hpp"
 
 #include <QCryptographicHash>
@@ -253,6 +254,49 @@ private slots:
             const int textW = btn->fontMetrics().horizontalAdvance(btn->text());
             QVERIFY2(btn->width() >= textW, qPrintable(QStringLiteral("Clipped button: %1").arg(btn->text())));
         }
+    }
+
+    void testBandCapabilityMatrixAndFourOptions() {
+        LiquidBandSelector bandSel;
+        QCOMPARE(bandSel.count(), 4);
+        bandSel.setCurrentIndex(3, true);
+        QCOMPARE(bandSel.currentText(), QStringLiteral("6 GHz"));
+
+        const QString iwAll = QStringLiteral(
+            "Frequencies:\n * 2412 MHz [1]\n * 5180 MHz [36]\n * 5955 MHz [1]\n"
+            "Supported interface modes:\n * P2P-client\n * P2P-GO\n#channels <= 2\n");
+        auto capAll = AdaptiveWifiPolicy::parseIwOutput(iwAll, QStringLiteral("freq: 5955"));
+        QVERIFY(capAll.supports24GHz && capAll.supports5GHz && capAll.supports6GHz && capAll.supportsP2p);
+        QCOMPARE(capAll.activeFrequencyMhz, 5955);
+
+        // Both peers 2.4/5/6 GHz over Secure LAN -> honors 6 GHz and verifies active 5955 MHz
+        PeerCapabilities peerAll{true, true, true, true, true};
+        auto dLan6 = AdaptiveWifiPolicy::evaluateBand(BandMode::Band6GHz, capAll, peerAll, TransportKind::SecureLanTcp);
+        QCOMPARE(dLan6.requestedState, CapabilityState::SupportedAndAvailable);
+        QVERIFY(dLan6.activeBandLabel.contains(QStringLiteral("6 GHz")));
+
+        // 6 GHz adapter over Wi-Fi Direct where NM D-Bus does not expose band control -> honest limitation
+        auto dP2p6 = AdaptiveWifiPolicy::evaluateBand(BandMode::Band6GHz, capAll, peerAll, TransportKind::WifiDirectP2p);
+        QCOMPARE(dP2p6.requestedState, CapabilityState::SupportedButUnavailable);
+        QVERIFY(!dP2p6.canHonorDirectly);
+        QCOMPARE(dP2p6.requestedMode, BandMode::Band6GHz); // preference preserved
+
+        // Asymmetric: local 6 GHz, peer 2.4/5 only
+        PeerCapabilities peerDual{true, true, false, true, true};
+        auto dAsym = AdaptiveWifiPolicy::evaluateBand(BandMode::Band6GHz, capAll, peerDual, TransportKind::SecureLanTcp);
+        QCOMPARE(dAsym.requestedState, CapabilityState::SupportedButUnavailable);
+        auto dAuto = AdaptiveWifiPolicy::evaluateBand(BandMode::AutoRecommended, capAll, peerDual, TransportKind::SecureLanTcp);
+        QCOMPARE(dAuto.effectiveTarget, BandMode::Band5GHz);
+
+        // 2.4 GHz-only peer
+        PeerCapabilities peer24{true, false, false, false, true};
+        auto dAuto24 = AdaptiveWifiPolicy::evaluateBand(BandMode::AutoRecommended, capAll, peer24, TransportKind::SecureLanTcp);
+        QCOMPARE(dAuto24.effectiveTarget, BandMode::Band24GHz);
+
+        // Missing/unknown active frequency
+        auto capNoLink = AdaptiveWifiPolicy::parseIwOutput(iwAll, QString());
+        auto dUnknown = AdaptiveWifiPolicy::evaluateBand(BandMode::Band5GHz, capNoLink, peerDual, TransportKind::SecureLanTcp);
+        QCOMPARE(dUnknown.activeBandLabel, QStringLiteral("Band information unavailable"));
     }
 };
 

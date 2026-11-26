@@ -1,6 +1,8 @@
 #pragma once
 
+#include "AdaptiveWifiPolicy.hpp"
 #include "FileManagerWidget.hpp"
+#include "LanDiscovery.hpp"
 #include "TlsServer.hpp"
 #include "WifiP2pBackend.hpp"
 
@@ -45,9 +47,15 @@ private slots:
 
 private:
     void updateDiskSpaceLabel();
+    void applyBandPreference(int idx, bool persist);
 
     WifiP2pBackend* m_p2p = nullptr;
     TlsReceiverServer* m_server = nullptr;
+    LanDiscoveryService* m_lanDiscovery = nullptr;
+    AdapterCapabilities m_adapterCap;
+    TransportKind m_activeTransport = TransportKind::WifiDirectP2p;
+    QString m_lanTargetIp;
+    quint16 m_lanTargetPort = 47291;
 
     QStackedWidget* m_pages = nullptr;
     QWidget* m_sidebar = nullptr;
@@ -70,6 +78,12 @@ private:
     QPushButton* m_btnBackToSetup = nullptr;
     QWidget* m_radarWidget = nullptr;
     QWidget* m_bandSelector = nullptr;
+    QWidget* m_connectBandSelector = nullptr;
+    QLabel* m_lblConnBandStatus = nullptr;
+    QLabel* m_lblConnWhy = nullptr;
+    QLineEdit* m_lanIpEdit = nullptr;
+    QPushButton* m_btnConnectLan = nullptr;
+    QListWidget* m_lanPeerList = nullptr;
     QWidget* m_deviceCardsHost = nullptr;
     QLabel* m_lblSendQueue = nullptr;
     QStringList m_queuedSendFiles;

@@ -23,6 +23,7 @@ add_executable(directdrop_desktop
     FileManagerWidget.hpp
     FileManagerWidget.cpp
     AdaptiveWifiPolicy.hpp
+    LanDiscovery.hpp
     LiquidDropProgressBar.hpp
     LiquidGlassPhysics.hpp
     LiquidSegmentedSelector.hpp

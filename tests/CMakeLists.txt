@@ -5,6 +5,7 @@ add_executable(directdrop_tests
     ../desktop/FileManagerWidget.hpp
     ../desktop/FileManagerWidget.cpp
     ../desktop/LiquidSegmentedSelector.hpp
+    ../desktop/LiquidBandSelector.hpp
     ../desktop/LiquidSidebar.hpp
     ../desktop/TlsServer.hpp
     ../desktop/TlsServer.cpp

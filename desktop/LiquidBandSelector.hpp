@@ -9,7 +9,7 @@ class LiquidBandSelector : public LiquidSegmentedSelector {
 public:
     explicit LiquidBandSelector(QWidget* parent = nullptr)
         : LiquidSegmentedSelector(
-              {QStringLiteral("Auto"), QStringLiteral("2.4 GHz"), QStringLiteral("5 GHz")},
+              {QStringLiteral("Auto"), QStringLiteral("2.4 GHz"), QStringLiteral("5 GHz"), QStringLiteral("6 GHz")},
               parent) {
         connect(this, &LiquidSegmentedSelector::selectionChanged, this, &LiquidBandSelector::bandChanged);
     }

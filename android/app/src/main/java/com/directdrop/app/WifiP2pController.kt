@@ -21,6 +21,8 @@ class WifiP2pController(
     private val channel = manager.initialize(context, context.mainLooper, null)
 
     fun is5GHzSupported(): Boolean = wifiManager.is5GHzBandSupported
+    fun is6GHzSupported(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) wifiManager.is6GHzBandSupported else false
 
     private val receiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
@@ -89,7 +91,10 @@ class WifiP2pController(
     @SuppressLint("MissingPermission")
     fun connectToPeer(device: WifiP2pDevice, band: Int = WifiP2pConfig.GROUP_OWNER_BAND_AUTO) {
         val effectiveBand = when {
-            band == WifiP2pConfig.GROUP_OWNER_BAND_5GHZ && !is5GHzSupported() -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+            band == WifiP2pConfig.GROUP_OWNER_BAND_5GHZ && !is5GHzSupported() -> {
+                onStatus("5 GHz unsupported on local adapter — choose Auto or 2.4 GHz.")
+                return
+            }
             band == WifiP2pConfig.GROUP_OWNER_BAND_AUTO && is5GHzSupported() -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
             else -> band
         }

@@ -1,6 +1,23 @@
-# DirectDrop v1.3.1
+# DirectDrop v1.4.0
 
-High-performance, verified, native **Wi-Fi Direct** file-transfer system between Android (API 29–36) and Linux Desktop (Ubuntu/Debian/Fedora/Arch, C++20 + Qt 6).
+High-performance, verified, native **Wi-Fi Direct** & **Secure LAN (TLS 1.3)** file-transfer system between Android (API 29–36) and Linux Desktop (C++20 + Qt 6).
+
+## What's New in v1.4.0
+- **Four-Option Liquid-Glass Band Selector (`Auto | 2.4 GHz | 5 GHz | 6 GHz`)**:
+  - Extended `LiquidBandSelector` (desktop) and `LiquidBandSelectorView` (Android) to all 4 options with persistent preference storage (`QSettings` / `SharedPreferences`).
+- **Central Capability Detection & Honest Band Negotiation** (`desktop/AdaptiveWifiPolicy.hpp`, `android/.../BandCapabilityManager.kt`):
+  - Probes real local capabilities (`iw list` + `iw dev <iface> link` on Linux; `WifiManager.is5GHzBandSupported` / `is6GHzBandSupported` / `WifiInfo.frequency` on Android API 30+).
+  - Distinguishes adapter support, transport band-control exposure, requested preference, and verified active frequency. Never silently overwrites manual preferences or fakes unsupported bands.
+- **Secure Local-Network Fallback** (`desktop/LanDiscovery.hpp`, `desktop/MainWindow.cpp`, `android/.../MainActivity.kt`):
+  - Adds UDP local-network peer discovery (`47292`) and manual IP:Port TLS 1.3 + SAS pairing fallback when Wi-Fi Direct is unavailable or when transferring over an existing 5 GHz / 6 GHz router link.
+- **GitHub Actions CI**: Added `.github/workflows/ci.yml` for Linux Desktop (CMake + CTest) and Android APK builds.
+
+## Compatibility Matrix
+
+| Platform | Architecture | Transports | Band Detection | Manual Band Control | Build / Test Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Linux Desktop (Ubuntu/Debian/Fedora/Arch) | x86_64 (ARM64 source-ready) | Wi-Fi Direct (NM D-Bus), Secure LAN (TLS 1.3) | `iw list` (2.4/5/6 GHz) & `iw dev link` | Auto + Secure LAN telemetry (NM P2P delegates channel to `wpa_supplicant`) | Built & CTest verified on x86_64 |
+| Android (API 29–36) | ARM64 / ARMv7 | Wi-Fi Direct (`WifiP2pManager`), Secure LAN (TLS 1.3) | `is5GHzBandSupported`, `is6GHzBandSupported` (API 30+), `WifiInfo.frequency` | `Auto`, `2.4 GHz`, `5 GHz` via `WifiP2pConfig`; `6 GHz` via Secure LAN over 6 GHz AP | Built & verified on Realme P3 Pro (`RMX5032`, Android 16) |
 
 ## What's New in v1.3.1
 - **Desktop Button Sizing & Responsive Wrapping** (`desktop/FlowLayout.hpp`, `desktop/FileManagerWidget.cpp`, `desktop/MainWindow.cpp`):
@@ -27,7 +44,7 @@ High-performance, verified, native **Wi-Fi Direct** file-transfer system between
 cmake -S desktop -B desktop/build -G Ninja
 cmake --build desktop/build --parallel
 ctest --test-dir desktop/build --output-on-failure
-sudo apt install "./releases/directdrop_1.3.1_amd64.deb"
+sudo apt install "./releases/directdrop_1.4.0_amd64.deb"
 ```
 
 ### Android
@@ -38,8 +55,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Release Artifacts (`releases/`)
-- `directdrop_1.3.1_amd64.deb` (earlier versions preserved)
-- `directdrop-1.3.1-debug.apk` (earlier versions preserved)
+- `directdrop_1.4.0_amd64.deb` (earlier versions preserved)
+- `directdrop-1.4.0-debug.apk` (earlier versions preserved)
 - `SHA256SUMS.txt`
 
 ## Known Limitations

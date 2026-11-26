@@ -407,6 +407,25 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp" />
 
+                <TextView
+                    android:id="@+id/bandStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Auto — choosing the best available connection"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/bandWhyText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Why this option? Probing adapter capabilities..."
+                    android:textColor="#CBD5E1"
+                    android:textSize="12sp" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -458,8 +477,46 @@
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/deviceRecyclerView"
                     android:layout_width="match_parent"
-                    android:layout_height="190dp"
+                    android:layout_height="150dp"
                     android:layout_marginTop="10dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <EditText
+                        android:id="@+id/lanIpInput"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/liquid_glass_card"
+                        android:hint="LAN IP fallback (e.g. 192.168.1.42)"
+                        android:paddingHorizontal="12dp"
+                        android:singleLine="true"
+                        android:textColor="#FFFFFF"
+                        android:textColorHint="#94A3B8"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnConnectLan"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:layout_marginStart="8dp"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="14dp"
+                        android:singleLine="true"
+                        android:text="Use LAN"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        app:backgroundTint="#22FFFFFF"
+                        app:cornerRadius="50dp"
+                        app:strokeColor="#77FFFFFF"
+                        app:strokeWidth="1dp" />
+                </LinearLayout>
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton

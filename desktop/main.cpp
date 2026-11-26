@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setStyle(QStringLiteral("Fusion"));
     app.setApplicationName(QStringLiteral("DirectDrop"));
-    app.setApplicationVersion(QStringLiteral("1.3.1"));
+    app.setApplicationVersion(QStringLiteral("1.4.0"));
 
     directdrop::MainWindow win;
     int capW = 1366;

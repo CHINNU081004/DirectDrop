@@ -21,7 +21,8 @@ class LiquidBandSelectorView @JvmOverloads constructor(
     enum class Band(val label: String) {
         AUTO("Auto"),
         GHZ_24("2.4 GHz"),
-        GHZ_5("5 GHz")
+        GHZ_5("5 GHz"),
+        GHZ_6("6 GHz")
     }
 
     var selectedBand: Band = Band.AUTO
@@ -77,7 +78,8 @@ class LiquidBandSelectorView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val segW = width / 3f
+        val count = Band.entries.size
+        val segW = width / count.toFloat()
         pointerX = event.x
         pointerY = event.y
         when (event.actionMasked) {
@@ -92,7 +94,7 @@ class LiquidBandSelectorView @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.x - lastDragX
                 lastDragX = event.x
-                val norm = ((event.x / maxOf(1f, width.toFloat())) * 3f - 0.5f).coerceIn(0f, 2f)
+                val norm = ((event.x / maxOf(1f, width.toFloat())) * count - 0.5f).coerceIn(0f, (count - 1).toFloat())
                 thumbPos.target = norm
                 stretchSpring.target = (dx / 18f).coerceIn(-0.35f, 0.35f)
                 startLoop()
@@ -102,7 +104,7 @@ class LiquidBandSelectorView @JvmOverloads constructor(
                 isDragging = false
                 pressSpring.target = 0f
                 stretchSpring.target = 0f
-                val idx = (event.x / maxOf(1f, segW)).toInt().coerceIn(0, 2)
+                val idx = (event.x / maxOf(1f, segW)).toInt().coerceIn(0, count - 1)
                 setBand(Band.entries[idx], notify = true)
                 return true
             }
@@ -144,7 +146,8 @@ class LiquidBandSelectorView @JvmOverloads constructor(
         canvas.drawRoundRect(trackRect, r, r, trackPaint)
         canvas.drawRoundRect(trackRect, r, r, borderPaint)
 
-        val segW = trackRect.width() / 3f
+        val count = Band.entries.size
+        val segW = trackRect.width() / count.toFloat()
         val stretchPx = abs(stretchSpring.value) * segW * 0.25f
         val compressY = pressSpring.value * 3.5f
         val left = trackRect.left + thumbPos.value * segW + 4f - if (stretchSpring.value < 0) stretchPx else 0f
