@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FileManagerWidget.hpp"
 #include "TlsServer.hpp"
 #include "WifiP2pBackend.hpp"
 
@@ -53,13 +54,11 @@ private:
 
     QPushButton* m_btnTabShare = nullptr;
     QPushButton* m_btnTabHistory = nullptr;
-    QPushButton* m_btnSortSend = nullptr;
-    QPushButton* m_btnSelectAllSend = nullptr;
+    FileManagerWidget* m_fileManager = nullptr;
+    QLabel* m_lblAdapterCap = nullptr;
+    QLabel* m_lblBandPolicy = nullptr;
     QPushButton* m_btnOpenConnectPage = nullptr;
     QPushButton* m_btnBackFromConnect = nullptr;
-    QLineEdit* m_searchSend = nullptr;
-    QListWidget* m_sendBrowserList = nullptr;
-    int m_sendSortMode = 0;
 
     QPushButton* m_btnScan = nullptr;
     QPushButton* m_btnConnectPeer = nullptr;

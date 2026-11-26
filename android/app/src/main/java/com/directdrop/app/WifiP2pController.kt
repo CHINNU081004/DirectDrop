@@ -17,7 +17,10 @@ class WifiP2pController(
     private val onStatus: (String) -> Unit
 ) {
     private val manager = context.getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+    private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
     private val channel = manager.initialize(context, context.mainLooper, null)
+
+    fun is5GHzSupported(): Boolean = wifiManager.is5GHzBandSupported
 
     private val receiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
@@ -85,22 +88,34 @@ class WifiP2pController(
 
     @SuppressLint("MissingPermission")
     fun connectToPeer(device: WifiP2pDevice, band: Int = WifiP2pConfig.GROUP_OWNER_BAND_AUTO) {
+        val effectiveBand = when {
+            band == WifiP2pConfig.GROUP_OWNER_BAND_5GHZ && !is5GHzSupported() -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+            band == WifiP2pConfig.GROUP_OWNER_BAND_AUTO && is5GHzSupported() -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+            else -> band
+        }
         val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             WifiP2pConfig.Builder()
                 .setDeviceAddress(android.net.MacAddress.fromString(device.deviceAddress))
-                .setGroupOperatingBand(band)
+                .setGroupOperatingBand(effectiveBand)
                 .build()
         } else {
             WifiP2pConfig().apply { deviceAddress = device.deviceAddress }
         }
-        val bandLabel = when (band) {
-            WifiP2pConfig.GROUP_OWNER_BAND_2GHZ -> "2.4 GHz"
-            WifiP2pConfig.GROUP_OWNER_BAND_5GHZ -> "5 GHz"
+        val bandLabel = when (effectiveBand) {
+            WifiP2pConfig.GROUP_OWNER_BAND_2GHZ -> "2.4 GHz (Range)"
+            WifiP2pConfig.GROUP_OWNER_BAND_5GHZ -> "5 GHz (Speed)"
             else -> "Auto"
         }
         manager.connect(channel, config, object : WifiP2pManager.ActionListener {
             override fun onSuccess() = onStatus("Negotiating $bandLabel group with ${device.deviceName}...")
-            override fun onFailure(reason: Int) = onStatus("Connect failed (code $reason)")
+            override fun onFailure(reason: Int) {
+                if (effectiveBand == WifiP2pConfig.GROUP_OWNER_BAND_5GHZ && band == WifiP2pConfig.GROUP_OWNER_BAND_AUTO) {
+                    onStatus("5 GHz unavailable; falling back to 2.4 GHz...")
+                    connectToPeer(device, WifiP2pConfig.GROUP_OWNER_BAND_2GHZ)
+                } else {
+                    onStatus("Connect failed (code $reason)")
+                }
+            }
         })
     }
 }

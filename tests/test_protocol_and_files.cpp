@@ -2,6 +2,8 @@
 #include "Protocol.hpp"
 #include "SafeFileWriter.hpp"
 #include "TlsServer.hpp"
+#include "AdaptiveWifiPolicy.hpp"
+#include "FileManagerWidget.hpp"
 #include "LiquidSidebar.hpp"
 
 #include <QCryptographicHash>
@@ -189,6 +191,47 @@ private slots:
         QCOMPARE(sidebar.activeIndex(), 1);
         QTest::qWait(300);
         QVERIFY(sidebar.lensOverlay()->currentAlphaMilli() < 50);
+    }
+
+    void testFileManagerAndAdaptivePolicy() {
+        QTemporaryDir tmp;
+        QDir(tmp.path()).mkdir(QStringLiteral("SubFolder"));
+        QFile f1(tmp.path() + QStringLiteral("/photo_01.png"));
+        QVERIFY(f1.open(QIODevice::WriteOnly));
+        f1.write("PNGDATA");
+        f1.close();
+
+        QFile f2(tmp.path() + QStringLiteral("/notes (üñîçødé).txt"));
+        QVERIFY(f2.open(QIODevice::WriteOnly));
+        f2.write("Hello");
+        f2.close();
+
+        FileManagerWidget fm;
+        fm.navigateTo(tmp.path());
+        QTest::qWait(150);
+        QVERIFY(fm.itemCount() >= 3);
+
+        fm.setSearchText(QStringLiteral("photo"));
+        QCOMPARE(fm.itemCount(), 1);
+        fm.setSearchText(QString());
+        QVERIFY(fm.itemCount() >= 3);
+
+        fm.selectAllItems(true);
+        fm.addSelectedToQueue();
+        QVERIFY(!fm.queuedFiles().isEmpty());
+
+        fm.setTab(FileManagerWidget::Tab::Folders);
+        QTest::qWait(150);
+        QCOMPARE(fm.itemCount(), 1);
+        // Queued files persist across tab switch
+        QVERIFY(!fm.queuedFiles().isEmpty());
+        // Originals never deleted
+        QVERIFY(QFile::exists(f1.fileName()));
+        QVERIFY(QFile::exists(f2.fileName()));
+
+        auto cap = AdaptiveWifiPolicy::probeCapabilities();
+        QVERIFY(cap.checked);
+        QVERIFY(!cap.summary.isEmpty());
     }
 };
 

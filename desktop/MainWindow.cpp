@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "AdaptiveWifiPolicy.hpp"
 #include "LiquidBandSelector.hpp"
 #include "LiquidDeviceCard.hpp"
 #include "LiquidDropProgressBar.hpp"
@@ -66,17 +67,32 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     ovLayout->setContentsMargins(20, 20, 20, 20);
     ovLayout->setSpacing(14);
 
-    auto* topBox = new QGroupBox(QStringLiteral("Connection & Wireless Band"), overviewPage);
-    auto* topLayout = new QHBoxLayout(topBox);
+    auto* topBox = new QGroupBox(QStringLiteral("Connection & Adaptive Wi-Fi Policy"), overviewPage);
+    auto* topVLayout = new QVBoxLayout(topBox);
+    auto* topLayout = new QHBoxLayout();
     m_lblTransport = new QLabel(QStringLiteral("Transport: Wi-Fi Direct (TLS 1.3)"), topBox);
     m_lblP2pStatus = new QLabel(QStringLiteral("Status: Ready"), topBox);
-    m_bandSelector = new LiquidBandSelector(topBox);
+    auto* bandSel = new LiquidBandSelector(topBox);
+    m_bandSelector = bandSel;
     m_btnOpenConnectPage = new QPushButton(QStringLiteral("Connect Device →"), topBox);
     topLayout->addWidget(m_lblTransport);
-    topLayout->addWidget(m_bandSelector);
+    topLayout->addWidget(bandSel);
     topLayout->addWidget(m_lblP2pStatus, 1);
     topLayout->addWidget(m_btnOpenConnectPage);
+    auto cap = AdaptiveWifiPolicy::probeCapabilities();
+    m_lblAdapterCap = new QLabel(QStringLiteral("Adapter: %1").arg(cap.summary), topBox);
+    m_lblAdapterCap->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.72); font-size: 12px;"));
+    m_lblBandPolicy = new QLabel(AdaptiveWifiPolicy::describeMode(BandMode::AutoRecommended, cap), topBox);
+    m_lblBandPolicy->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.82); font-size: 12px;"));
+    m_lblBandPolicy->setWordWrap(true);
+    topVLayout->addLayout(topLayout);
+    topVLayout->addWidget(m_lblAdapterCap);
+    topVLayout->addWidget(m_lblBandPolicy);
     ovLayout->addWidget(topBox);
+
+    connect(bandSel, &LiquidBandSelector::bandChanged, this, [this, cap](int idx, const QString&) {
+        m_lblBandPolicy->setText(AdaptiveWifiPolicy::describeMode(static_cast<BandMode>(idx), cap));
+    });
 
     auto* logBox = new QGroupBox(QStringLiteral("Activity Log"), overviewPage);
     auto* logLayout = new QVBoxLayout(logBox);
@@ -87,35 +103,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     overviewScroll->setWidget(overviewPage);
     m_pages->addWidget(overviewScroll);
 
-    // ================= PAGE 1: FILES (SEND QUEUE) =================
+    // ================= PAGE 1: NATIVE FILE MANAGER =================
     auto* filesPage = new QWidget(m_pages);
     filesPage->setObjectName(QStringLiteral("pageFiles"));
     auto* filesLayout = new QVBoxLayout(filesPage);
     filesLayout->setContentsMargins(20, 20, 20, 20);
-    filesLayout->setSpacing(12);
+    filesLayout->setSpacing(10);
 
-    auto* sendBox = new QGroupBox(QStringLiteral("Files & Send Queue"), filesPage);
-    auto* sendVLayout = new QVBoxLayout(sendBox);
-    auto* sendLayout = new QHBoxLayout();
-    m_lblSendQueue = new QLabel(QStringLiteral("No files queued"), sendBox);
-    m_btnQueueFiles = new QPushButton(QStringLiteral("Select Files..."), sendBox);
-    m_btnQueueFolder = new QPushButton(QStringLiteral("Select Folder..."), sendBox);
-    m_btnSortSend = new QPushButton(QStringLiteral("Sort: Name"), sendBox);
-    m_btnSelectAllSend = new QPushButton(QStringLiteral("All"), sendBox);
-    m_btnSendQueued = new QPushButton(QStringLiteral("Send to Device"), sendBox);
-    sendLayout->addWidget(m_lblSendQueue, 1);
-    sendLayout->addWidget(m_btnQueueFiles);
-    sendLayout->addWidget(m_btnQueueFolder);
-    sendLayout->addWidget(m_btnSortSend);
-    sendLayout->addWidget(m_btnSelectAllSend);
-    sendLayout->addWidget(m_btnSendQueued);
-    m_searchSend = new QLineEdit(sendBox);
-    m_searchSend->setPlaceholderText(QStringLiteral("Search queued files..."));
-    m_sendBrowserList = new QListWidget(sendBox);
-    sendVLayout->addLayout(sendLayout);
-    sendVLayout->addWidget(m_searchSend);
-    sendVLayout->addWidget(m_sendBrowserList, 1);
-    filesLayout->addWidget(sendBox, 1);
+    auto* fmBox = new QGroupBox(QStringLiteral("File Manager (Images • Files • Folders)"), filesPage);
+    auto* fmBoxLayout = new QVBoxLayout(fmBox);
+    m_fileManager = new FileManagerWidget(fmBox);
+    fmBoxLayout->addWidget(m_fileManager);
+    filesLayout->addWidget(fmBox, 1);
     m_pages->addWidget(filesPage);
 
     // ================= PAGE 2: CONNECT DEVICE =================
@@ -230,43 +229,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(m_btnConnectPeer, &QPushButton::clicked, this, &MainWindow::onConnectSelectedPeer);
     connect(m_btnDest, &QPushButton::clicked, this, &MainWindow::onChooseDestination);
     connect(m_btnOpenDest, &QPushButton::clicked, this, &MainWindow::onOpenDestination);
-    connect(m_btnQueueFiles, &QPushButton::clicked, this, &MainWindow::onQueueFilesToSend);
-    connect(m_btnQueueFolder, &QPushButton::clicked, this, &MainWindow::onQueueFolderToSend);
-    connect(m_btnSortSend, &QPushButton::clicked, this, [this]() {
-        m_sendSortMode = (m_sendSortMode + 1) % 3;
-        m_btnSortSend->setText(m_sendSortMode == 1 ? QStringLiteral("Sort: Size") : (m_sendSortMode == 2 ? QStringLiteral("Sort: Type") : QStringLiteral("Sort: Name")));
-        QString q = m_searchSend->text().trimmed();
-        m_sendBrowserList->clear();
-        QStringList sorted = m_queuedSendFiles;
-        std::sort(sorted.begin(), sorted.end(), [this](const QString& a, const QString& b) {
-            QFileInfo fa(a), fb(b);
-            if (m_sendSortMode == 1) return fa.size() > fb.size();
-            if (m_sendSortMode == 2) return fa.suffix().toLower() < fb.suffix().toLower();
-            return fa.fileName().toLower() < fb.fileName().toLower();
-        });
-        for (const QString& f : sorted) {
-            QFileInfo fi(f);
-            if (q.isEmpty() || fi.fileName().contains(q, Qt::CaseInsensitive)) {
-                auto* it = new QListWidgetItem(QStringLiteral("%1 (%2 MB)").arg(fi.fileName()).arg(fi.size() / (1024.0 * 1024.0), 0, 'f', 2), m_sendBrowserList);
-                it->setCheckState(Qt::Checked);
-            }
-        }
+    connect(m_fileManager, &FileManagerWidget::sendRequested, this, [this](const QStringList& files, const QString& baseDir) {
+        m_queuedSendFiles = files;
+        m_queuedSendBaseDir = baseDir;
+        onSendQueuedToPeer();
     });
-    connect(m_btnSelectAllSend, &QPushButton::clicked, this, [this]() {
-        bool anyUnchecked = false;
-        for (int i = 0; i < m_sendBrowserList->count(); ++i) {
-            if (m_sendBrowserList->item(i)->checkState() != Qt::Checked) { anyUnchecked = true; break; }
-        }
-        Qt::CheckState target = anyUnchecked ? Qt::Checked : Qt::Unchecked;
-        for (int i = 0; i < m_sendBrowserList->count(); ++i) m_sendBrowserList->item(i)->setCheckState(target);
-    });
-    connect(m_searchSend, &QLineEdit::textChanged, this, [this](const QString& q) {
-        for (int i = 0; i < m_sendBrowserList->count(); ++i) {
-            auto* it = m_sendBrowserList->item(i);
-            it->setHidden(!q.isEmpty() && !it->text().contains(q, Qt::CaseInsensitive));
-        }
-    });
-    connect(m_btnSendQueued, &QPushButton::clicked, this, &MainWindow::onSendQueuedToPeer);
     connect(m_btnOpenConnectPage, &QPushButton::clicked, this, [this]() {
         setPageIndex(2);
         onStartScan();
@@ -339,37 +306,8 @@ void MainWindow::onOpenDestination() {
     QDesktopServices::openUrl(QUrl::fromLocalFile(m_server->destinationRoot()));
 }
 
-void MainWindow::onQueueFilesToSend() {
-    QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Select Files to Queue"));
-    if (files.isEmpty()) return;
-    m_queuedSendFiles = files;
-    m_queuedSendBaseDir.clear();
-    m_sendBrowserList->clear();
-    for (const QString& f : files) {
-        QFileInfo fi(f);
-        auto* it = new QListWidgetItem(QStringLiteral("%1 (%2 MB)").arg(fi.fileName()).arg(fi.size() / (1024.0 * 1024.0), 0, 'f', 2), m_sendBrowserList);
-        it->setCheckState(Qt::Checked);
-    }
-    m_lblSendQueue->setText(QStringLiteral("Queued: %1 file(s) ready to send").arg(files.size()));
-}
-
-void MainWindow::onQueueFolderToSend() {
-    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("Select Folder to Queue"));
-    if (dir.isEmpty()) return;
-    QStringList files;
-    QDirIterator it(dir, QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext()) files.append(it.next());
-    if (files.isEmpty()) return;
-    m_queuedSendFiles = files;
-    m_queuedSendBaseDir = dir;
-    m_sendBrowserList->clear();
-    for (const QString& f : files) {
-        QFileInfo fi(f);
-        auto* item = new QListWidgetItem(QStringLiteral("%1 (%2 MB)").arg(fi.fileName()).arg(fi.size() / (1024.0 * 1024.0), 0, 'f', 2), m_sendBrowserList);
-        item->setCheckState(Qt::Checked);
-    }
-    m_lblSendQueue->setText(QStringLiteral("Queued: %1 file(s) from folder ready").arg(files.size()));
-}
+void MainWindow::onQueueFilesToSend() {}
+void MainWindow::onQueueFolderToSend() {}
 
 void MainWindow::onSendQueuedToPeer() {
     if (m_queuedSendFiles.isEmpty()) {

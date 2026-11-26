@@ -1,10 +1,16 @@
-# DirectDrop v1.2.2
+# DirectDrop v1.3.0
 
 High-performance, verified, native **Wi-Fi Direct** file-transfer system between Android (API 29–36) and Linux Desktop (Ubuntu/Debian/Fedora/Arch, C++20 + Qt 6).
 
-## What's New in v1.2.2
-- **Removed Moving Interior Hotspot**: Removed the pointer/touch-following `RadialGradient` / `QRadialGradient` hotspot from `TransparentGlassPainter` (`LiquidGlassEngine.kt`) and `drawTransparentGlassLens` (`LiquidGlassPhysics.hpp`). Replaced it with a stable, restrained top-edge inner sheen and directional rim highlight so the glass remains transparent and readable.
-- **Fixed Linux Sidebar Hover Lens Lifecycle** (`desktop/LiquidSidebar.hpp`): Separated `m_activeIndex` from `m_hoveredIndex`, added child-button `Enter` / `Leave` / `MouseMove` event filtering, and ensured the hover lens snaps cleanly to hovered item bounds and fades out when leaving the sidebar.
+## What's New in v1.3.0
+- **Native Desktop File Manager** (`desktop/FileManagerWidget.hpp`, `desktop/FileManagerWidget.cpp`):
+  - **Images**, **Files**, and **Folders** segmented tabs inside the Files workspace.
+  - Background directory enumeration (`QtConcurrent`), lazy thumbnail loading with a 250-item `QCache`, Grid/List toggle, hidden-files toggle, Search, Sort (Name/Size/Type/Date), Filter (All/Images/Videos/Documents/Archives), Volume switcher (Home/Downloads/Pictures/Mounted drives), and in-app Preview.
+  - Safe local operations (**New Folder**, **Rename**, **Delete** with explicit confirmation and symlink guard) kept strictly separate from **copy-only** sending via the DirectDrop Send Queue.
+- **Adaptive Wi-Fi Band & Capability Policy** (`desktop/AdaptiveWifiPolicy.hpp`, `android/.../WifiP2pController.kt`):
+  - Probes real local adapter capabilities (`iw list` on Linux, `WifiManager.is5GHzBandSupported` on Android).
+  - **Auto (Recommended)** prefers 5 GHz when supported and falls back to 2.4 GHz on unsupported/failed links; **2.4 GHz (Range)** and **5 GHz (Speed)** remain user-selectable.
+- **Complete Liquid-Glass Consistency**: Transparent neutral glass lenses, subtle depth shadows, fixed soft top-edge sheen, and restrained rim highlights across all desktop and mobile screens (no moving interior hotspot).
 
 ## Build & Install
 
@@ -13,7 +19,7 @@ High-performance, verified, native **Wi-Fi Direct** file-transfer system between
 cmake -S desktop -B desktop/build -G Ninja
 cmake --build desktop/build --parallel
 ctest --test-dir desktop/build --output-on-failure
-sudo apt install "./releases/directdrop_1.2.2_amd64.deb"
+sudo apt install "./releases/directdrop_1.3.0_amd64.deb"
 ```
 
 ### Android
@@ -24,10 +30,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Release Artifacts (`releases/`)
-- `directdrop_1.2.2_amd64.deb` (v1.2.0 & v1.2.1 preserved)
-- `directdrop-1.2.2-debug.apk` (v1.2.0 & v1.2.1 preserved)
+- `directdrop_1.3.0_amd64.deb` (earlier versions preserved)
+- `directdrop-1.3.0-debug.apk` (earlier versions preserved)
 - `SHA256SUMS.txt`
 
 ## Known Limitations
-- True optical background refraction is approximated via layered transparent neutral glass interiors, directional rim lighting, and organic displaced wave paths because Qt Widgets and Android Views do not expose a live behind-widget framebuffer sampler across arbitrary sibling layers.
-- Hardware Wi-Fi Direct group formation depends on driver/firmware channel concurrency (`ath10k_pci` verified for D-Bus discovery).
+- Wi-Fi Direct operates on a negotiated single group channel; simultaneous dual-band aggregation (2.4 GHz + 5 GHz combined) is not implemented.
+- On Linux, NetworkManager's `wifi-p2p` D-Bus profile delegates channel negotiation to `wpa_supplicant` rather than forcing a fixed channel from client D-Bus properties.
+- Optical refraction remains a layered transparent-glass approximation.
