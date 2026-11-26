@@ -68,31 +68,33 @@ FileManagerWidget::FileManagerWidget(QWidget* parent) : QWidget(parent) {
     tabRow->addWidget(m_volumesCombo);
     root->addLayout(tabRow);
 
-    // 2. Location + Search + View Controls
+    // 2. Location + Search + View Controls (2 clean rows so nothing clips at 1040x680 or 1366x768)
     auto* navRow = new QHBoxLayout();
     m_btnUp = new QPushButton(QStringLiteral("↑ Up"), this);
     m_lblPath = new QLabel(m_currentDir.absolutePath(), this);
     m_lblPath->setWordWrap(false);
+    m_btnGrid = new QPushButton(QStringLiteral("Grid"), this);
+    m_btnHidden = new QPushButton(QStringLiteral("Hidden"), this);
+    m_btnHidden->setCheckable(true);
+    m_btnRefresh = new QPushButton(QStringLiteral("Refresh"), this);
+    navRow->addWidget(m_btnUp);
+    navRow->addWidget(m_lblPath, 1);
+    navRow->addWidget(m_btnGrid);
+    navRow->addWidget(m_btnHidden);
+    navRow->addWidget(m_btnRefresh);
+    root->addLayout(navRow);
+
+    auto* filterRow = new QHBoxLayout();
     m_searchEdit = new QLineEdit(this);
     m_searchEdit->setPlaceholderText(QStringLiteral("Search in current view..."));
     m_sortCombo = new QComboBox(this);
     m_sortCombo->addItems({QStringLiteral("Sort: Name"), QStringLiteral("Sort: Size"), QStringLiteral("Sort: Type"), QStringLiteral("Sort: Date")});
     m_filterCombo = new QComboBox(this);
     m_filterCombo->addItems({QStringLiteral("All"), QStringLiteral("Images"), QStringLiteral("Videos"), QStringLiteral("Documents"), QStringLiteral("Archives")});
-    m_btnGrid = new QPushButton(QStringLiteral("Grid"), this);
-    m_btnHidden = new QPushButton(QStringLiteral("Hidden"), this);
-    m_btnHidden->setCheckable(true);
-    m_btnRefresh = new QPushButton(QStringLiteral("Refresh"), this);
-
-    navRow->addWidget(m_btnUp);
-    navRow->addWidget(m_lblPath, 1);
-    navRow->addWidget(m_searchEdit, 1);
-    navRow->addWidget(m_sortCombo);
-    navRow->addWidget(m_filterCombo);
-    navRow->addWidget(m_btnGrid);
-    navRow->addWidget(m_btnHidden);
-    navRow->addWidget(m_btnRefresh);
-    root->addLayout(navRow);
+    filterRow->addWidget(m_searchEdit, 1);
+    filterRow->addWidget(m_sortCombo);
+    filterRow->addWidget(m_filterCombo);
+    root->addLayout(filterRow);
 
     // 3. Main File / Image / Folder List or Grid
     m_list = new QListWidget(this);
@@ -104,29 +106,31 @@ FileManagerWidget::FileManagerWidget(QWidget* parent) : QWidget(parent) {
     m_lblState->setStyleSheet(QStringLiteral("color: rgba(255,255,255,0.68); font-size: 12px;"));
     root->addWidget(m_lblState);
 
-    // 4. Local Ops + Transfer Queue Strip
-    auto* actionRow = new QHBoxLayout();
+    // 4. Local Ops + Transfer Queue Strip (2 clean rows so no button text clips)
+    auto* localOpsRow = new QHBoxLayout();
     m_btnSelectAll = new QPushButton(QStringLiteral("Select All"), this);
     m_btnClearSel = new QPushButton(QStringLiteral("Clear"), this);
     m_btnPreview = new QPushButton(QStringLiteral("Preview"), this);
     m_btnNewFolder = new QPushButton(QStringLiteral("New Folder"), this);
     m_btnRename = new QPushButton(QStringLiteral("Rename"), this);
     m_btnDelete = new QPushButton(QStringLiteral("Delete"), this);
+    localOpsRow->addWidget(m_btnSelectAll);
+    localOpsRow->addWidget(m_btnClearSel);
+    localOpsRow->addWidget(m_btnPreview);
+    localOpsRow->addWidget(m_btnNewFolder);
+    localOpsRow->addWidget(m_btnRename);
+    localOpsRow->addWidget(m_btnDelete);
+    localOpsRow->addStretch();
+    root->addLayout(localOpsRow);
+
+    auto* queueRow = new QHBoxLayout();
     m_lblQueue = new QLabel(QStringLiteral("Queue: 0"), this);
     m_btnAddToQueue = new QPushButton(QStringLiteral("Add to Queue"), this);
     m_btnSendQueue = new QPushButton(QStringLiteral("Send Queued →"), this);
-
-    actionRow->addWidget(m_btnSelectAll);
-    actionRow->addWidget(m_btnClearSel);
-    actionRow->addWidget(m_btnPreview);
-    actionRow->addWidget(m_btnNewFolder);
-    actionRow->addWidget(m_btnRename);
-    actionRow->addWidget(m_btnDelete);
-    actionRow->addStretch();
-    actionRow->addWidget(m_lblQueue);
-    actionRow->addWidget(m_btnAddToQueue);
-    actionRow->addWidget(m_btnSendQueue);
-    root->addLayout(actionRow);
+    queueRow->addWidget(m_lblQueue, 1);
+    queueRow->addWidget(m_btnAddToQueue);
+    queueRow->addWidget(m_btnSendQueue);
+    root->addLayout(queueRow);
 
     connect(m_tabImages, &QPushButton::clicked, this, [this]() { setTab(Tab::Images); });
     connect(m_tabFiles, &QPushButton::clicked, this, [this]() { setTab(Tab::Files); });
