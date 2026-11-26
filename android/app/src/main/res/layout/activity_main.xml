@@ -38,37 +38,39 @@
             android:orientation="vertical"
             android:padding="18dp">
 
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/homeTabGroup"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true"
-                app:checkedButton="@id/tabShare">
+                android:background="@drawable/liquid_glass_card"
+                android:orientation="horizontal"
+                android:padding="4dp">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/tabShare"
-                    style="?attr/materialButtonOutlinedStyle"
+                    style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="40dp"
                     android:layout_weight="1"
                     android:text="SHARE"
                     android:textColor="#FFFFFF"
+                    app:backgroundTint="#442962FF"
                     app:cornerRadius="50dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/tabHistory"
-                    style="?attr/materialButtonOutlinedStyle"
+                    style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="40dp"
                     android:layout_weight="1"
                     android:text="HISTORY"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#B0BEC5"
+                    app:backgroundTint="#00000000"
                     app:cornerRadius="50dp" />
-            </com.google.android.material.button.MaterialButtonToggleGroup>
+            </LinearLayout>
 
             <!-- Big Send / Receive Glass Circles -->
             <LinearLayout
+                android:id="@+id/shareActionsContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="28dp"
@@ -162,148 +164,191 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- PAGE 2: SELECT ITEMS (Before Connecting) -->
+        <!-- PAGE 2: IN-APP FILE MANAGER & MEDIA BROWSER (Bottom Icon Tabs + Send Bar) -->
         <LinearLayout
             android:id="@+id/selectPage"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="16dp"
+            android:padding="14dp"
             android:visibility="gone">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnBackFromSelect"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="← Home"
-                app:cornerRadius="50dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/liquid_glass_card"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-                <TextView
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBackFromSelect"
+                    style="@style/Widget.Material3.Button.TonalButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="1. Select Items to Share"
-                    android:textColor="#FFFFFF"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    android:text="← Home"
+                    app:cornerRadius="50dp" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:id="@+id/browserPathText"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:orientation="horizontal">
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:ellipsize="start"
+                    android:singleLine="true"
+                    android:text="Internal Storage"
+                    android:textColor="#82B1FF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnSelectFiles"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="4dp"
-                        android:text="Files"
-                        app:cornerRadius="50dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnSelectFolder"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Folder"
-                        app:cornerRadius="50dp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFolderUp"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:orientation="horizontal">
+                    android:text="↑ Up"
+                    android:visibility="gone"
+                    app:cornerRadius="50dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnPhotos"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="4dp"
-                        android:text="Photos"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnVideos"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Videos"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSort"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:orientation="horizontal">
+                    android:layout_marginStart="6dp"
+                    android:text="Sort"
+                    app:cornerRadius="50dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnAudio"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="4dp"
-                        android:text="Audio"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSelectAll"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="All"
+                    app:cornerRadius="50dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnApps"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Apps (APK)"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
-                </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnViewMode"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="Grid"
+                    app:cornerRadius="50dp" />
             </LinearLayout>
 
-            <ScrollView
+            <EditText
+                android:id="@+id/searchInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/liquid_glass_card"
+                android:hint="Search files, photos, videos, apps..."
+                android:padding="10dp"
+                android:singleLine="true"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#90CAF9"
+                android:textSize="14sp" />
+
+            <!-- In-App List Card -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/browserRecyclerView"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/liquid_glass_card"
-                android:padding="14dp">
+                android:padding="8dp" />
+
+            <!-- Bottom Icon-Only Segmented Bar -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/liquid_glass_card"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="6dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSelectFiles"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="📁"
+                    android:textSize="20sp"
+                    app:cornerRadius="50dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnVideos"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🎬"
+                    android:textSize="20sp"
+                    app:cornerRadius="50dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPhotos"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🖼️"
+                    android:textSize="20sp"
+                    app:cornerRadius="50dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnApps"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="📦"
+                    android:textSize="20sp"
+                    app:cornerRadius="50dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAudio"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🎵"
+                    android:textSize="20sp"
+                    app:cornerRadius="50dp" />
+            </LinearLayout>
+
+            <!-- Bottom Count + Send Bar -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
                     android:id="@+id/selectionText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="No items selected yet."
-                    android:textColor="#E3F2FD"
-                    android:textSize="14sp" />
-            </ScrollView>
+                    android:layout_width="56dp"
+                    android:layout_height="44dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/liquid_glass_card"
+                    android:gravity="center"
+                    android:text="0"
+                    android:textColor="#00E5FF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnProceedToScan"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="SEND → Find Device"
-                app:cornerRadius="50dp" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnProceedToScan"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SEND → Find Device"
+                    app:cornerRadius="50dp" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- PAGE 3: RADAR SCAN & CONNECT -->
@@ -352,7 +397,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Available Devices"
+                            android:text="Connect Device"
                             android:textColor="#FFFFFF"
                             android:textAppearance="?attr/textAppearanceTitleMedium" />
 
@@ -366,45 +411,11 @@
                     </LinearLayout>
                 </LinearLayout>
 
-                <com.google.android.material.button.MaterialButtonToggleGroup
-                    android:id="@+id/bandToggleGroup"
+                <com.directdrop.app.LiquidBandSelectorView
+                    android:id="@+id/bandSelector"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    app:singleSelection="true"
-                    app:selectionRequired="true"
-                    app:checkedButton="@id/btnBandAuto">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBandAuto"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Auto"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBand24"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="2.4 GHz"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBand5"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="5 GHz"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="50dp" />
-                </com.google.android.material.button.MaterialButtonToggleGroup>
+                    android:layout_marginTop="12dp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -418,7 +429,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:layout_marginEnd="6dp"
-                        android:text="Discover"
+                        android:text="Rescan"
                         app:cornerRadius="50dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -428,7 +439,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:layout_marginStart="6dp"
-                        android:text="Connect Peer"
+                        android:text="Connect Selected"
                         app:cornerRadius="50dp" />
                 </LinearLayout>
 
@@ -441,14 +452,11 @@
                     android:textAppearance="?attr/textAppearanceTitleLarge"
                     android:visibility="gone" />
 
-                <TextView
-                    android:id="@+id/peersText"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/deviceRecyclerView"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="No peers discovered yet."
-                    android:textColor="#E3F2FD"
-                    android:textSize="13sp" />
+                    android:layout_height="190dp"
+                    android:layout_marginTop="10dp" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton

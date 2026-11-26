@@ -1,12 +1,17 @@
 #include "MainWindow.hpp"
+#include "LiquidBandSelector.hpp"
+#include "LiquidDeviceCard.hpp"
 #include "LiquidDropProgressBar.hpp"
 #include "RadarScanWidget.hpp"
 #include "TlsClient.hpp"
 
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QStorageInfo>
@@ -21,14 +26,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setMinimumSize(560, 480);
     resize(880, 680);
     setStyleSheet(QStringLiteral(
-        "QWidget#centralGlass, QScrollArea, QStackedWidget, QWidget#pageSetup, QWidget#pageTransfer { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #060B1E, stop:0.5 #0D1B42, stop:1 #09132E); border: none; }"
+        "QWidget#centralGlass, QScrollArea, QStackedWidget, QWidget#pageSetup, QWidget#pageTransfer, QWidget#pageConnect { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #060B1E, stop:0.5 #0D1B42, stop:1 #09132E); border: none; }"
         "QGroupBox { background: rgba(255, 255, 255, 0.10); border: 1.5px solid rgba(255, 255, 255, 0.28); border-radius: 20px; margin-top: 14px; padding: 14px; color: #E3F2FD; font-weight: 600; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 18px; padding: 0 8px; color: #82B1FF; font-weight: 700; }"
         "QLabel { color: #F0F6FF; background: transparent; }"
         "QPushButton { background: rgba(255, 255, 255, 0.14); border: 1.2px solid rgba(255, 255, 255, 0.38); border-radius: 19px; min-height: 36px; padding: 2px 20px; color: #FFFFFF; font-weight: 600; }"
         "QPushButton:hover { background: rgba(0, 229, 255, 0.32); border-color: rgba(255, 255, 255, 0.65); }"
         "QPushButton:pressed { background: rgba(41, 98, 255, 0.50); }"
-        "QListWidget, QPlainTextEdit, QComboBox { background: rgba(255, 255, 255, 0.10); border: 1.2px solid rgba(255, 255, 255, 0.32); border-radius: 14px; color: #F0F6FF; padding: 6px 12px; }"
+        "QListWidget, QPlainTextEdit, QComboBox, QLineEdit { background: rgba(255, 255, 255, 0.10); border: 1.2px solid rgba(255, 255, 255, 0.32); border-radius: 14px; color: #F0F6FF; padding: 6px 12px; }"
         "QComboBox QAbstractItemView { background: rgba(13, 27, 66, 0.88); border: 1.2px solid rgba(255, 255, 255, 0.38); border-radius: 12px; color: #FFFFFF; selection-background-color: rgba(0, 229, 255, 0.35); outline: none; }"
     ));
 
@@ -50,25 +55,36 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* topLayout = new QHBoxLayout(topBox);
     m_lblTransport = new QLabel(QStringLiteral("Transport: Wi-Fi Direct (TLS 1.3)"), topBox);
     m_lblP2pStatus = new QLabel(QStringLiteral("Status: Ready"), topBox);
-    m_bandCombo = new QComboBox(topBox);
-    m_bandCombo->addItem(QStringLiteral("Band: Auto"));
-    m_bandCombo->addItem(QStringLiteral("Band: 2.4 GHz"));
-    m_bandCombo->addItem(QStringLiteral("Band: 5 GHz"));
+    m_bandSelector = new LiquidBandSelector(topBox);
+    m_btnOpenConnectPage = new QPushButton(QStringLiteral("Connect Device →"), topBox);
     topLayout->addWidget(m_lblTransport);
-    topLayout->addWidget(m_bandCombo);
+    topLayout->addWidget(m_bandSelector);
     topLayout->addWidget(m_lblP2pStatus, 1);
+    topLayout->addWidget(m_btnOpenConnectPage);
     root->addWidget(topBox);
 
-    auto* sendBox = new QGroupBox(QStringLiteral("Send Queue"), setupPage);
-    auto* sendLayout = new QHBoxLayout(sendBox);
+    auto* sendBox = new QGroupBox(QStringLiteral("Send Queue (Select, Search & Sort)"), setupPage);
+    auto* sendVLayout = new QVBoxLayout(sendBox);
+    auto* sendLayout = new QHBoxLayout();
     m_lblSendQueue = new QLabel(QStringLiteral("No files queued"), sendBox);
     m_btnQueueFiles = new QPushButton(QStringLiteral("Select Files..."), sendBox);
     m_btnQueueFolder = new QPushButton(QStringLiteral("Select Folder..."), sendBox);
+    m_btnSortSend = new QPushButton(QStringLiteral("Sort: Name"), sendBox);
+    m_btnSelectAllSend = new QPushButton(QStringLiteral("All"), sendBox);
     m_btnSendQueued = new QPushButton(QStringLiteral("Send to Device"), sendBox);
     sendLayout->addWidget(m_lblSendQueue, 1);
     sendLayout->addWidget(m_btnQueueFiles);
     sendLayout->addWidget(m_btnQueueFolder);
+    sendLayout->addWidget(m_btnSortSend);
+    sendLayout->addWidget(m_btnSelectAllSend);
     sendLayout->addWidget(m_btnSendQueued);
+    m_searchSend = new QLineEdit(sendBox);
+    m_searchSend->setPlaceholderText(QStringLiteral("Search queued files..."));
+    m_sendBrowserList = new QListWidget(sendBox);
+    m_sendBrowserList->setMaximumHeight(110);
+    sendVLayout->addLayout(sendLayout);
+    sendVLayout->addWidget(m_searchSend);
+    sendVLayout->addWidget(m_sendBrowserList);
     root->addWidget(sendBox);
 
     auto* p2pBox = new QGroupBox(QStringLiteral("Nearby Devices"), setupPage);
@@ -157,6 +173,34 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     txRoot->addWidget(filesBox, 1);
 
     m_pages->addWidget(txPage);
+
+    // ================= PAGE 2: DEDICATED CONNECT DEVICE PAGE =================
+    auto* connectPage = new QWidget(m_pages);
+    connectPage->setObjectName(QStringLiteral("pageConnect"));
+    auto* connRoot = new QVBoxLayout(connectPage);
+    connRoot->setContentsMargins(18, 18, 18, 18);
+    connRoot->setSpacing(12);
+
+    auto* connHeader = new QHBoxLayout();
+    m_btnBackFromConnect = new QPushButton(QStringLiteral("← Back"), connectPage);
+    auto* lblConnTitle = new QLabel(QStringLiteral("Connect Device"), connectPage);
+    lblConnTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #FFFFFF;"));
+    connHeader->addWidget(m_btnBackFromConnect);
+    connHeader->addWidget(lblConnTitle);
+    connHeader->addStretch();
+    connRoot->addLayout(connHeader);
+
+    auto* connBox = new QGroupBox(QStringLiteral("Discovered Devices (Click for Liquid Ripple)"), connectPage);
+    auto* connBoxLayout = new QVBoxLayout(connBox);
+    m_deviceCardsHost = new QWidget(connBox);
+    auto* cardsLayout = new QVBoxLayout(m_deviceCardsHost);
+    cardsLayout->setContentsMargins(0, 0, 0, 0);
+    cardsLayout->setSpacing(8);
+    cardsLayout->addStretch();
+    connBoxLayout->addWidget(m_deviceCardsHost);
+    connRoot->addWidget(connBox, 1);
+
+    m_pages->addWidget(connectPage);
     setCentralWidget(m_pages);
     updateDiskSpaceLabel();
 
@@ -166,7 +210,46 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(m_btnOpenDest, &QPushButton::clicked, this, &MainWindow::onOpenDestination);
     connect(m_btnQueueFiles, &QPushButton::clicked, this, &MainWindow::onQueueFilesToSend);
     connect(m_btnQueueFolder, &QPushButton::clicked, this, &MainWindow::onQueueFolderToSend);
+    connect(m_btnSortSend, &QPushButton::clicked, this, [this]() {
+        m_sendSortMode = (m_sendSortMode + 1) % 3;
+        m_btnSortSend->setText(m_sendSortMode == 1 ? QStringLiteral("Sort: Size") : (m_sendSortMode == 2 ? QStringLiteral("Sort: Type") : QStringLiteral("Sort: Name")));
+        QString q = m_searchSend->text().trimmed();
+        m_sendBrowserList->clear();
+        QStringList sorted = m_queuedSendFiles;
+        std::sort(sorted.begin(), sorted.end(), [this](const QString& a, const QString& b) {
+            QFileInfo fa(a), fb(b);
+            if (m_sendSortMode == 1) return fa.size() > fb.size();
+            if (m_sendSortMode == 2) return fa.suffix().toLower() < fb.suffix().toLower();
+            return fa.fileName().toLower() < fb.fileName().toLower();
+        });
+        for (const QString& f : sorted) {
+            QFileInfo fi(f);
+            if (q.isEmpty() || fi.fileName().contains(q, Qt::CaseInsensitive)) {
+                auto* it = new QListWidgetItem(QStringLiteral("%1 (%2 MB)").arg(fi.fileName()).arg(fi.size() / (1024.0 * 1024.0), 0, 'f', 2), m_sendBrowserList);
+                it->setCheckState(Qt::Checked);
+            }
+        }
+    });
+    connect(m_btnSelectAllSend, &QPushButton::clicked, this, [this]() {
+        bool anyUnchecked = false;
+        for (int i = 0; i < m_sendBrowserList->count(); ++i) {
+            if (m_sendBrowserList->item(i)->checkState() != Qt::Checked) { anyUnchecked = true; break; }
+        }
+        Qt::CheckState target = anyUnchecked ? Qt::Checked : Qt::Unchecked;
+        for (int i = 0; i < m_sendBrowserList->count(); ++i) m_sendBrowserList->item(i)->setCheckState(target);
+    });
+    connect(m_searchSend, &QLineEdit::textChanged, this, [this](const QString& q) {
+        for (int i = 0; i < m_sendBrowserList->count(); ++i) {
+            auto* it = m_sendBrowserList->item(i);
+            it->setHidden(!q.isEmpty() && !it->text().contains(q, Qt::CaseInsensitive));
+        }
+    });
     connect(m_btnSendQueued, &QPushButton::clicked, this, &MainWindow::onSendQueuedToPeer);
+    connect(m_btnOpenConnectPage, &QPushButton::clicked, this, [this]() {
+        m_pages->setCurrentIndex(2);
+        onStartScan();
+    });
+    connect(m_btnBackFromConnect, &QPushButton::clicked, this, [this]() { m_pages->setCurrentIndex(0); });
     connect(m_btnBackToSetup, &QPushButton::clicked, this, [this]() { m_pages->setCurrentIndex(0); });
     connect(m_conflictCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
         m_server->setConflictPolicy(static_cast<ConflictPolicy>(m_conflictCombo->itemData(idx).toInt()));
@@ -232,6 +315,12 @@ void MainWindow::onQueueFilesToSend() {
     if (files.isEmpty()) return;
     m_queuedSendFiles = files;
     m_queuedSendBaseDir.clear();
+    m_sendBrowserList->clear();
+    for (const QString& f : files) {
+        QFileInfo fi(f);
+        auto* it = new QListWidgetItem(QStringLiteral("%1 (%2 MB)").arg(fi.fileName()).arg(fi.size() / (1024.0 * 1024.0), 0, 'f', 2), m_sendBrowserList);
+        it->setCheckState(Qt::Checked);
+    }
     m_lblSendQueue->setText(QStringLiteral("Queued: %1 file(s) ready to send").arg(files.size()));
 }
 
@@ -244,6 +333,12 @@ void MainWindow::onQueueFolderToSend() {
     if (files.isEmpty()) return;
     m_queuedSendFiles = files;
     m_queuedSendBaseDir = dir;
+    m_sendBrowserList->clear();
+    for (const QString& f : files) {
+        QFileInfo fi(f);
+        auto* item = new QListWidgetItem(QStringLiteral("%1 (%2 MB)").arg(fi.fileName()).arg(fi.size() / (1024.0 * 1024.0), 0, 'f', 2), m_sendBrowserList);
+        item->setCheckState(Qt::Checked);
+    }
     m_lblSendQueue->setText(QStringLiteral("Queued: %1 file(s) from folder ready").arg(files.size()));
 }
 
@@ -269,6 +364,18 @@ void MainWindow::onSendQueuedToPeer() {
 void MainWindow::onPeerAdded(const P2pPeerInfo& peer) {
     auto* item = new QListWidgetItem(QStringLiteral("%1 (%2) — %3%").arg(peer.name, peer.hwAddress).arg(peer.strength), m_peerList);
     item->setData(Qt::UserRole, peer.objectPath);
+
+    if (m_deviceCardsHost && m_deviceCardsHost->layout()) {
+        auto* card = new LiquidDeviceCard(peer.name, peer.hwAddress, peer.strength, peer.objectPath, m_deviceCardsHost);
+        connect(card, &LiquidDeviceCard::selectedWithOrigin, this, [this](const QString& path, const QPointF&) {
+            QString err;
+            if (!m_p2p->connectToPeer(path, &err)) {
+                appendLog(QStringLiteral("Connect error: %1").arg(err));
+            }
+        });
+        auto* vbox = qobject_cast<QVBoxLayout*>(m_deviceCardsHost->layout());
+        if (vbox) vbox->insertWidget(qMax(0, vbox->count() - 1), card);
+    }
 }
 
 void MainWindow::onP2pStateChanged(P2pState state, const QString& detail) {

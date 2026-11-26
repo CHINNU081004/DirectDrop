@@ -21,6 +21,9 @@ add_executable(directdrop_desktop
     MainWindow.hpp
     MainWindow.cpp
     LiquidDropProgressBar.hpp
+    LiquidGlassPhysics.hpp
+    LiquidBandSelector.hpp
+    LiquidDeviceCard.hpp
     RadarScanWidget.hpp
     TlsClient.hpp
     WifiP2pBackend.hpp

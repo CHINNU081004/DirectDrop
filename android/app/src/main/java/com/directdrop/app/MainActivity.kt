@@ -3,23 +3,28 @@ package com.directdrop.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import android.view.View
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,19 +35,26 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var sasText: TextView
-    private lateinit var peersText: TextView
     private lateinit var selectionText: TextView
+    private lateinit var browserPathText: TextView
     private lateinit var recentHistoryText: TextView
     private lateinit var transferScreenSummary: TextView
     private lateinit var transferFileListText: TextView
     private lateinit var transferScreenProgress: LiquidDropProgressView
     private lateinit var radarScanView: RadarScanView
+    private lateinit var btnFolderUp: MaterialButton
 
     private lateinit var p2pController: WifiP2pController
-    private lateinit var protocolClient: ProtocolClient
+    private lateinit var browserAdapter: BrowserAdapter
+    private lateinit var deviceAdapter: DeviceAdapter
+    private var selectedDevice: WifiP2pDevice? = null
 
     private var discoveredPeers: List<WifiP2pDevice> = emptyList()
-    private var selectedFiles: List<SelectedFile> = emptyList()
+    private var currentEntries: List<BrowserEntry> = emptyList()
+    private var sortMode: Int = 0 // 0=Name, 1=Size, 2=Type
+    private val selectedMap = linkedMapOf<String, SelectedFile>()
+    private val selectedIds = mutableSetOf<String>()
+    private var currentDir: File = Environment.getExternalStorageDirectory()
     private var connectedHostIp: String? = null
 
     private val permLauncher = registerForActivityResult(
@@ -54,36 +66,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val filePicker = registerForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            selectedFiles = uris.mapNotNull { uri ->
-                val doc = DocumentFile.fromSingleUri(this, uri)
-                val name = doc?.name ?: "file_${System.currentTimeMillis()}"
-                SelectedFile(uri, name, doc?.length() ?: 0L)
-            }
-            updateSelectionSummary()
-        }
-    }
-
-    private val folderPicker = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            selectedFiles = protocolClient.collectFilesFromTree(uri)
-            updateSelectionSummary()
-        }
-    }
-
-    private fun updateSelectionSummary() {
-        val totalMb = selectedFiles.sumOf { it.size } / (1024.0 * 1024.0)
-        val preview = selectedFiles.take(8).joinToString("\n") {
-            "• ${it.relativePath} (%.2f MB)".format(it.size / (1024.0 * 1024.0))
-        }
-        val extra = if (selectedFiles.size > 8) "\n...and ${selectedFiles.size - 8} more" else ""
-        selectionText.text = "Selected ${selectedFiles.size} item(s) — %.2f MB\n\n$preview$extra".format(totalMb)
+    private fun updateSelectionCount() {
+        selectionText.text = selectedMap.size.toString()
     }
 
     private fun showPage(target: View) {
@@ -98,6 +82,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun applySortAndShow(list: List<BrowserEntry>) {
+        currentEntries = list
+        val sorted = when (sortMode) {
+            1 -> list.sortedWith(compareBy<BrowserEntry>({ !it.isDirectory }, { -(it.selectedFile?.size ?: 0L) }))
+            2 -> list.sortedWith(compareBy<BrowserEntry>({ !it.isDirectory }, { it.title.substringAfterLast('.', "").lowercase() }, { it.title.lowercase() }))
+            else -> list.sortedWith(compareBy<BrowserEntry>({ !it.isDirectory }, { it.title.lowercase() }))
+        }
+        val query = findViewById<android.widget.EditText>(R.id.searchInput).text?.toString()?.trim().orEmpty()
+        val filtered = if (query.isEmpty()) sorted else sorted.filter { it.title.contains(query, ignoreCase = true) }
+        browserAdapter.submitList(filtered)
+    }
+
+    private fun loadDirectory(dir: File) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+            return
+        }
+        currentDir = dir
+        val root = Environment.getExternalStorageDirectory()
+        val rel = dir.absolutePath.removePrefix(root.absolutePath).trimStart('/')
+        browserPathText.text = if (rel.isEmpty()) "Internal Storage" else rel
+        btnFolderUp.visibility = if (dir.absolutePath != root.absolutePath) View.VISIBLE else View.GONE
+        lifecycleScope.launch(Dispatchers.IO) {
+            val list = InAppFileManager.listDirectory(dir)
+            withContext(Dispatchers.Main) { applySortAndShow(list) }
+        }
+    }
+
+    private fun loadMediaCategory(title: String, loader: () -> List<SelectedFile>) {
+        btnFolderUp.visibility = View.GONE
+        browserPathText.text = title
+        lifecycleScope.launch(Dispatchers.IO) {
+            val entries = loader().map { sf ->
+                BrowserEntry(
+                    id = sf.uri.toString(),
+                    title = sf.relativePath.substringAfterLast('/'),
+                    subtitle = "%.2f MB".format(sf.size / (1024.0 * 1024.0)),
+                    isDirectory = false,
+                    selectedFile = sf
+                )
+            }
+            withContext(Dispatchers.Main) { applySortAndShow(entries) }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -107,8 +139,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setContentView(R.layout.activity_main)
+        InAppFileManager.ensureHiddenIndexDir(this)
 
-        protocolClient = ProtocolClient(this)
         homePage = findViewById(R.id.homePage)
         selectPage = findViewById(R.id.selectPage)
         scanPage = findViewById(R.id.scanPage)
@@ -116,13 +148,38 @@ class MainActivity : AppCompatActivity() {
 
         statusText = findViewById(R.id.statusText)
         sasText = findViewById(R.id.sasText)
-        peersText = findViewById(R.id.peersText)
         selectionText = findViewById(R.id.selectionText)
+        browserPathText = findViewById(R.id.browserPathText)
         recentHistoryText = findViewById(R.id.recentHistoryText)
         transferScreenSummary = findViewById(R.id.transferScreenSummary)
         transferFileListText = findViewById(R.id.transferFileListText)
         transferScreenProgress = findViewById(R.id.transferScreenProgress)
         radarScanView = findViewById(R.id.radarScanView)
+        btnFolderUp = findViewById(R.id.btnFolderUp)
+
+        val recycler: RecyclerView = findViewById(R.id.browserRecyclerView)
+        recycler.layoutManager = LinearLayoutManager(this)
+        browserAdapter = BrowserAdapter(
+            context = this,
+            scope = lifecycleScope,
+            selectedIds = selectedIds,
+            onFolderClick = { entry -> entry.file?.let { loadDirectory(it) } },
+            onToggleItem = { entry, checked ->
+                if (entry.isDirectory && entry.file != null) {
+                    val files = InAppFileManager.collectDirectoryFiles(entry.file)
+                    if (checked) {
+                        files.forEach { selectedMap[it.relativePath] = it }
+                    } else {
+                        files.forEach { selectedMap.remove(it.relativePath) }
+                    }
+                } else if (entry.selectedFile != null) {
+                    if (checked) selectedMap[entry.id] = entry.selectedFile
+                    else selectedMap.remove(entry.id)
+                }
+                updateSelectionCount()
+            }
+        )
+        recycler.adapter = browserAdapter
 
         val btnHomeSend: MaterialButton = findViewById(R.id.btnHomeSend)
         val btnHomeReceive: MaterialButton = findViewById(R.id.btnHomeReceive)
@@ -133,16 +190,96 @@ class MainActivity : AppCompatActivity() {
 
         val btnDiscover: MaterialButton = findViewById(R.id.btnDiscover)
         val btnConnect: MaterialButton = findViewById(R.id.btnConnect)
-        val bandToggleGroup: MaterialButtonToggleGroup = findViewById(R.id.bandToggleGroup)
+        val bandSelector: LiquidBandSelectorView = findViewById(R.id.bandSelector)
+        val deviceRecycler: RecyclerView = findViewById(R.id.deviceRecyclerView)
+        deviceRecycler.layoutManager = LinearLayoutManager(this)
+        deviceAdapter = DeviceAdapter { dev ->
+            selectedDevice = dev
+            val band = when (bandSelector.selectedBand) {
+                LiquidBandSelectorView.Band.GHZ_24 -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                LiquidBandSelectorView.Band.GHZ_5 -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                else -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+            }
+            p2pController.connectToPeer(dev, band)
+        }
+        deviceRecycler.adapter = deviceAdapter
         val btnSelectFiles: MaterialButton = findViewById(R.id.btnSelectFiles)
-        val btnSelectFolder: MaterialButton = findViewById(R.id.btnSelectFolder)
         val btnPhotos: MaterialButton = findViewById(R.id.btnPhotos)
         val btnVideos: MaterialButton = findViewById(R.id.btnVideos)
         val btnAudio: MaterialButton = findViewById(R.id.btnAudio)
         val btnApps: MaterialButton = findViewById(R.id.btnApps)
+        val btnSort: MaterialButton = findViewById(R.id.btnSort)
+        val btnSelectAll: MaterialButton = findViewById(R.id.btnSelectAll)
+        val btnViewMode: MaterialButton = findViewById(R.id.btnViewMode)
+        val searchInput: android.widget.EditText = findViewById(R.id.searchInput)
+        val tabShare: MaterialButton = findViewById(R.id.tabShare)
+        val tabHistory: MaterialButton = findViewById(R.id.tabHistory)
+        val shareActionsContainer: View = findViewById(R.id.shareActionsContainer)
         val btnTransfer: MaterialButton = findViewById(R.id.btnTransfer)
 
-        btnHomeSend.setOnClickListener { showPage(selectPage) }
+        tabShare.setOnClickListener {
+            shareActionsContainer.visibility = View.VISIBLE
+            tabShare.setBackgroundColor(android.graphics.Color.parseColor("#442962FF"))
+            tabHistory.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        }
+        tabHistory.setOnClickListener {
+            shareActionsContainer.visibility = View.GONE
+            tabHistory.setBackgroundColor(android.graphics.Color.parseColor("#442962FF"))
+            tabShare.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        }
+
+        btnViewMode.setOnClickListener {
+            browserAdapter.isGridMode = !browserAdapter.isGridMode
+            if (browserAdapter.isGridMode) {
+                btnViewMode.text = "List"
+                recycler.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 3)
+            } else {
+                btnViewMode.text = "Grid"
+                recycler.layoutManager = LinearLayoutManager(this)
+            }
+            recycler.adapter = browserAdapter
+        }
+
+        searchInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                applySortAndShow(currentEntries)
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
+        btnSelectAll.setOnClickListener {
+            val nonDirs = currentEntries.filter { !it.isDirectory && it.selectedFile != null }
+            val allSelected = nonDirs.isNotEmpty() && nonDirs.all { selectedIds.contains(it.id) }
+            if (allSelected) {
+                nonDirs.forEach {
+                    selectedIds.remove(it.id)
+                    selectedMap.remove(it.id)
+                }
+            } else {
+                nonDirs.forEach {
+                    selectedIds.add(it.id)
+                    selectedMap[it.id] = it.selectedFile!!
+                }
+            }
+            updateSelectionCount()
+            applySortAndShow(currentEntries)
+        }
+
+        btnSort.setOnClickListener {
+            sortMode = (sortMode + 1) % 3
+            btnSort.text = when (sortMode) {
+                1 -> "Sort: Size"
+                2 -> "Sort: Type"
+                else -> "Sort: Name"
+            }
+            applySortAndShow(currentEntries)
+        }
+
+        btnHomeSend.setOnClickListener {
+            showPage(selectPage)
+            loadDirectory(Environment.getExternalStorageDirectory())
+        }
         btnHomeReceive.setOnClickListener {
             showPage(scanPage)
             if (hasRequiredPermissions()) {
@@ -153,9 +290,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnBackFromSelect.setOnClickListener { showPage(homePage) }
+        btnFolderUp.setOnClickListener {
+            currentDir.parentFile?.let { loadDirectory(it) }
+        }
         btnProceedToScan.setOnClickListener {
-            if (selectedFiles.isEmpty()) {
-                selectionText.text = "Please select at least one file, folder, photo, video, audio, or app first."
+            if (selectedMap.isEmpty()) {
+                browserPathText.text = "Select at least 1 item first"
                 return@setOnClickListener
             }
             showPage(scanPage)
@@ -167,16 +307,26 @@ class MainActivity : AppCompatActivity() {
         btnBackFromScan.setOnClickListener { showPage(selectPage) }
         btnBackToSetup.setOnClickListener { showPage(homePage) }
 
+        btnSelectFiles.setOnClickListener { loadDirectory(Environment.getExternalStorageDirectory()) }
+        btnPhotos.setOnClickListener { loadMediaCategory("Photos") { MediaBrowser.queryImages(this, 200) } }
+        btnVideos.setOnClickListener { loadMediaCategory("Videos") { MediaBrowser.queryVideos(this, 200) } }
+        btnAudio.setOnClickListener { loadMediaCategory("Audio") { MediaBrowser.queryAudio(this, 200) } }
+        btnApps.setOnClickListener {
+            btnFolderUp.visibility = View.GONE
+            browserPathText.text = "Installed Apps"
+            lifecycleScope.launch(Dispatchers.IO) {
+                val apps = InAppFileManager.listInstalledAppsWithIcons(this@MainActivity)
+                withContext(Dispatchers.Main) { applySortAndShow(apps) }
+            }
+        }
+
         p2pController = WifiP2pController(
             this,
             onPeersChanged = { peers ->
                 discoveredPeers = peers
                 if (peers.isNotEmpty()) radarScanView.setScanning(false)
-                peersText.text = if (peers.isEmpty()) {
-                    "No peers found yet."
-                } else {
-                    peers.joinToString("\n") { "• ${it.deviceName} (${it.deviceAddress})" }
-                }
+                deviceAdapter.submitList(peers)
+                statusText.text = if (peers.isEmpty()) "No devices found yet." else "Found ${peers.size} device(s) — tap to connect"
             },
             onGroupConnected = { goIp, isGo ->
                 radarScanView.setScanning(false)
@@ -197,39 +347,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnConnect.setOnClickListener {
-            val band = when (bandToggleGroup.checkedButtonId) {
-                R.id.btnBand24 -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
-                R.id.btnBand5 -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+            val band = when (bandSelector.selectedBand) {
+                LiquidBandSelectorView.Band.GHZ_24 -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                LiquidBandSelectorView.Band.GHZ_5 -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
                 else -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
             }
-            discoveredPeers.firstOrNull()?.let { p2pController.connectToPeer(it, band) }
+            val target = selectedDevice ?: discoveredPeers.firstOrNull()
+            target?.let { p2pController.connectToPeer(it, band) }
                 ?: run { statusText.text = "No peers discovered yet." }
-        }
-
-        btnSelectFiles.setOnClickListener { filePicker.launch(arrayOf("*/*")) }
-        btnSelectFolder.setOnClickListener { folderPicker.launch(null) }
-        btnPhotos.setOnClickListener { filePicker.launch(arrayOf("image/*")) }
-        btnVideos.setOnClickListener { filePicker.launch(arrayOf("video/*")) }
-        btnAudio.setOnClickListener { filePicker.launch(arrayOf("audio/*")) }
-        btnApps.setOnClickListener {
-            val allApps = MediaBrowser.listInstalledUserApps(this, limit = 200)
-            if (allApps.isEmpty()) {
-                selectionText.text = "No user apps found."
-                return@setOnClickListener
-            }
-            val names = allApps.map { it.relativePath.removePrefix("Apps/").removeSuffix(".apk") }.toTypedArray()
-            val checked = BooleanArray(allApps.size)
-            AlertDialog.Builder(this)
-                .setTitle("Select Apps to Extract & Send")
-                .setMultiChoiceItems(names, checked) { _, which, isChecked ->
-                    checked[which] = isChecked
-                }
-                .setPositiveButton("Select") { _, _ ->
-                    selectedFiles = allApps.filterIndexed { idx, _ -> checked[idx] }
-                    updateSelectionSummary()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
         }
 
         lifecycleScope.launch {
@@ -249,7 +374,8 @@ class MainActivity : AppCompatActivity() {
                 if (st.total > 0) {
                     recentHistoryText.text = "Last job: ${st.verified}/${st.total} verified (${st.currentFile})"
                 }
-                transferFileListText.text = selectedFiles.mapIndexed { idx, f ->
+                val items = selectedMap.values.toList()
+                transferFileListText.text = items.mapIndexed { idx, f ->
                     val mb = f.size / (1024.0 * 1024.0)
                     val mark = if (idx < st.verified) "✓" else if (idx == st.verified && st.running) "⏳" else "•"
                     "$mark ${f.relativePath} (%.2f MB)".format(mb)
@@ -262,7 +388,8 @@ class MainActivity : AppCompatActivity() {
                 statusText.text = "Connect to laptop via Wi-Fi Direct first."
                 return@setOnClickListener
             }
-            if (selectedFiles.isEmpty()) {
+            val files = selectedMap.values.toList()
+            if (files.isEmpty()) {
                 statusText.text = "Select items first."
                 return@setOnClickListener
             }
@@ -273,7 +400,7 @@ class MainActivity : AppCompatActivity() {
                 host = host,
                 deviceId = devId,
                 deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
-                files = selectedFiles
+                files = files
             )
         }
     }
@@ -298,7 +425,7 @@ class MainActivity : AppCompatActivity() {
                 Manifest.permission.READ_MEDIA_AUDIO
             )
         } else {
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
 

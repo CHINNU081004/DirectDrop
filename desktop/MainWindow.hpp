@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QHash>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QPlainTextEdit>
@@ -20,6 +21,7 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override = default;
+    void setPageIndex(int idx) { if (m_pages) m_pages->setCurrentIndex(idx); }
 
 private slots:
     void onStartScan();
@@ -47,6 +49,16 @@ private:
 
     QStackedWidget* m_pages = nullptr;
 
+    QPushButton* m_btnTabShare = nullptr;
+    QPushButton* m_btnTabHistory = nullptr;
+    QPushButton* m_btnSortSend = nullptr;
+    QPushButton* m_btnSelectAllSend = nullptr;
+    QPushButton* m_btnOpenConnectPage = nullptr;
+    QPushButton* m_btnBackFromConnect = nullptr;
+    QLineEdit* m_searchSend = nullptr;
+    QListWidget* m_sendBrowserList = nullptr;
+    int m_sendSortMode = 0;
+
     QPushButton* m_btnScan = nullptr;
     QPushButton* m_btnConnectPeer = nullptr;
     QPushButton* m_btnDest = nullptr;
@@ -56,10 +68,11 @@ private:
     QPushButton* m_btnSendQueued = nullptr;
     QPushButton* m_btnBackToSetup = nullptr;
     QWidget* m_radarWidget = nullptr;
+    QWidget* m_bandSelector = nullptr;
+    QWidget* m_deviceCardsHost = nullptr;
     QLabel* m_lblSendQueue = nullptr;
     QStringList m_queuedSendFiles;
     QString m_queuedSendBaseDir;
-    QComboBox* m_bandCombo = nullptr;
     QComboBox* m_conflictCombo = nullptr;
 
     QLabel* m_lblTransport = nullptr;
